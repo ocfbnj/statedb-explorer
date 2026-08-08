@@ -3,12 +3,13 @@ import {
   api, whenReady, onProgress, formatSize, formatSizeNoB, formatTime,
 } from './api';
 import type { Session, Message, Summary } from './api';
+import { useI18n } from './I18nContext';
 import { JsonViewerModal } from './JsonTree';
 import './styles.css';
 
 type Page = 'dashboard' | 'sessions' | 'schema' | 'sql';
 
-/* ---- VS Code 风格刷新图标（SVG） ---- */
+/* ---- Refresh icon (SVG), in a modern dark theme style ---- */
 function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
   return (
     <svg
@@ -25,11 +26,12 @@ function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
 }
 
 /* ================================================================
-   根组件
+   Root component
    ================================================================ */
 export default function App() {
+  const { t } = useI18n();
   const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState('初始化...');
+  const [loading, setLoading] = useState('load.init');
   const [loadPercent, setLoadPercent] = useState(0);
   const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -50,12 +52,12 @@ export default function App() {
     onProgress((stage, pct) => { setLoading(stage); setLoadPercent(pct); });
   }, []);
 
-  // 初始化：等待主进程加载 state.db
+  // Initialize: wait for the main process to load state.db
   useEffect(() => {
     whenReady().then(async () => {
       setReady(true);
       try {
-        // 从 Electron 主进程获取已加载的 db 元信息
+        // Fetch the loaded db metadata from the Electron main process
         if (window.stateDB) {
           const meta = await window.stateDB.meta();
           setDbMeta({ path: meta.path, size: meta.size, name: meta.name });
@@ -69,29 +71,29 @@ export default function App() {
         setSummary(summ);
         if (sess.items.length > 0) setSelectedId(sess.items[0].id);
       } catch (e: any) {
-        setLoadError(e?.message || '加载 state.db 失败');
+        setLoadError(e?.message || 'Failed to load state.db');
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 搜索会话
+  // Search sessions
   const refreshSessions = useCallback(async () => {
     if (!api.isReady()) return;
-    // 若输入 #消息ID 格式，不触发会话过滤（用于定位消息）
+    // If the input matches a #messageID format, skip session filtering (used to locate a message)
     const isMsgIdSearch = /^#?\d+$/.test(search.trim());
     const res = await api.listSessions({ limit: 100, q: isMsgIdSearch ? '' : search });
     setSessions(res.items);
     setTotalSessions(res.total);
   }, [search]);
 
-  // 完整刷新：重新从磁盘加载 state.db，再刷新所有数据
+  // Full refresh: reload state.db from disk, then refresh all data
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const res = await api.reload();
       if (!res.ok) {
-        setLoadError(res.error || '刷新失败');
+        setLoadError(res.error || 'Refresh failed');
         setRefreshing(false);
         return;
       }
@@ -104,14 +106,14 @@ export default function App() {
       setTotalSessions(sess.total);
       setSummary(summ);
     } catch (e: any) {
-      setLoadError(e?.message || '刷新失败');
+      setLoadError(e?.message || 'Refresh failed');
     }
     setRefreshing(false);
   }, [search]);
 
   useEffect(() => { refreshSessions(); }, [refreshSessions]);
 
-  // 加载所选会话消息
+  // Load messages for the selected session
   useEffect(() => {
     if (!selectedId) { setMessages([]); return; }
     api.listMessages(selectedId).then(setMessages).catch(() => setMessages([]));
@@ -124,12 +126,12 @@ export default function App() {
     setJsonModal({ title, data });
   }
 
-  // 处理标题栏搜索框回车：若输入 #数字 则按消息 id 定位
+  // Handle Enter in the header search box: if input is #number, locate by message id
   async function handleSearchKeyDown(e: React.KeyboardEvent) {
     if (e.key !== 'Enter') return;
     const val = search.trim();
     const m = val.match(/^#?(\d+)$/);
-    if (!m) return; // 非数字则走普通会话搜索
+    if (!m) return; // non-numeric input falls through to a normal session search
     const msgId = parseInt(m[1], 10);
     try {
       const msg = await api.getMessageById(msgId);
@@ -141,13 +143,13 @@ export default function App() {
   }
 
   const navItems: { id: Page; icon: string; label: string }[] = [
-    { id: 'dashboard', icon: '📊', label: '概览' },
-    { id: 'sessions', icon: '💬', label: '会话' },
-    { id: 'schema', icon: '🗄️', label: '表结构' },
-    { id: 'sql', icon: '🔍', label: 'SQL' },
+    { id: 'dashboard', icon: '📊', label: t('nav.overview') },
+    { id: 'sessions', icon: '💬', label: t('nav.sessions') },
+    { id: 'schema', icon: '🗄️', label: t('nav.schema') },
+    { id: 'sql', icon: '🔍', label: t('nav.sql') },
   ];
 
-  // 加载/初始界面
+  // Loading / initial screen
   if (!ready || (!api.isReady() && !loadError)) {
     return (
       <div style={{
@@ -160,7 +162,7 @@ export default function App() {
           StateDB Explorer
         </div>
         <div style={{ width: 280 }}>
-          <div style={{ fontSize: 12, marginBottom: 6 }}>{loading}</div>
+          <div style={{ fontSize: 12, marginBottom: 6 }}>{t(loading)}</div>
           <div style={{ width: '100%', height: 6, background: 'var(--bg-hover)', borderRadius: 3, overflow: 'hidden' }}>
             <div style={{ width: `${loadPercent}%`, height: '100%', background: 'var(--accent)', borderRadius: 3, transition: 'width 0.3s' }} />
           </div>
@@ -177,7 +179,7 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Header — 自绘标题栏（VS Code 风格） */}
+      {/* Header — custom-drawn title bar */}
       <header className="header">
         <div className="header-logo no-drag">
           <span className="logo-icon">⚡</span> StateDB Explorer
@@ -187,7 +189,7 @@ export default function App() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             onKeyDown={handleSearchKeyDown}
-            placeholder="搜索会话，或输入 #消息ID 定位消息"
+            placeholder={t('app.search')}
           />
         </div>
         <div className="header-actions no-drag" />
@@ -209,11 +211,11 @@ export default function App() {
           ))}
           <button
             className="rail-item rail-item-bottom"
-            title="设置"
+            title={t('nav.settings')}
             onClick={() => setShowSettings(true)}
           >
             <span>⚙️</span>
-            <span className="rail-label">设置</span>
+            <span className="rail-label">{t('nav.settings')}</span>
           </button>
         </nav>
 
@@ -221,8 +223,8 @@ export default function App() {
         {showSessionPanel && (
           <aside className="sub-panel">
             <div className="panel-header">
-              <div className="panel-title">会话列表</div>
-              <div className="panel-subtitle">{totalSessions} 个会话</div>
+              <div className="panel-title">{t('sessions.title')}</div>
+              <div className="panel-subtitle">{t('sessions.count', { count: totalSessions })}</div>
             </div>
             <div className="session-list">
               {sessions.map(s => (
@@ -231,11 +233,11 @@ export default function App() {
                   className={`session-item ${selectedId === s.id ? 'active' : ''}`}
                   onClick={() => setSelectedId(s.id)}
                 >
-                  <div className="session-title">{s.title || '(无标题)'}</div>
+                  <div className="session-title">{s.title || t('turn.emptyTitle')}</div>
                   <div className="session-meta">
-                    <span>{s.message_count} 消息</span>
+                    <span>{t('sessions.messages', { n: s.message_count })}</span>
                     <span className="dot" />
-                    <span>{s.api_call_count ?? 0} 调用</span>
+                    <span>{t('sessions.calls', { n: s.api_call_count ?? 0 })}</span>
                     <span className="dot" />
                     <span>{formatSizeNoB(s.input_tokens + s.output_tokens)}</span>
                     <span className="dot" />
@@ -244,7 +246,7 @@ export default function App() {
                 </div>
               ))}
               {sessions.length === 0 && (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-faint)' }}>无会话</div>
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-faint)' }}>{t('sessions.empty')}</div>
               )}
             </div>
           </aside>
@@ -269,7 +271,7 @@ export default function App() {
             />
           )}
           {page === 'sessions' && !selectedSession && (
-            <EmptyState icon="💬" title="选择一个会话" desc="从左侧列表选择会话以查看详情" />
+            <EmptyState icon="💬" title={t('conv.noSession')} desc={t('conv.noMessages')} />
           )}
           {page === 'schema' && <SchemaPage />}
           {page === 'sql' && <SqlPage />}
@@ -278,14 +280,14 @@ export default function App() {
 
       {/* Footer */}
       <footer className="footer">
-        <span>state.db {summary ? formatSize(summary.db_size) : '—'}</span>
-        <span>{totalSessions} 会话</span>
-        <span>{summary?.messages ?? 0} 消息</span>
+        <span>{t('status.db', { size: summary ? formatSize(summary.db_size) : '—' })}</span>
+        <span>{t('status.sessions', { n: totalSessions })}</span>
+        <span>{t('status.messages', { n: summary?.messages ?? 0 })}</span>
         <span className="footer-right">
           <button
             className="panel-refresh"
             onClick={handleRefresh}
-            title="重新加载数据库"
+            title={t('app.refresh')}
             disabled={refreshing}
           >
             <RefreshIcon spinning={refreshing} />
@@ -333,7 +335,8 @@ function Dashboard({
   sessions: Session[];
   onSelectSession: (id: string) => void;
 }) {
-  if (!summary) return <div style={{ padding: 24, color: 'var(--text-muted)' }}>加载中...</div>;
+  const { t } = useI18n();
+  if (!summary) return <div style={{ padding: 24, color: 'var(--text-muted)' }}>{t('overview.loading')}</div>;
 
   const avgTokens = summary.sessions > 0 ? Math.round(summary.total_tokens / summary.sessions) : 0;
   const topSessions = [...sessions]
@@ -344,22 +347,22 @@ function Dashboard({
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">仪表板</div>
-        <div className="page-subtitle">Hermes state.db 运行数据总览</div>
+        <div className="page-title">{t('overview.title')}</div>
+        <div className="page-subtitle">{t('overview.subtitle')}</div>
       </div>
 
       <div className="dash-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        <StatCard icon="💬" label="总会话" value={summary.sessions.toLocaleString()} cls="accent"
-          sub={`${summary.messages.toLocaleString()} 条消息`} />
-        <StatCard icon="📊" label="总 Token" value={formatSizeNoB(summary.total_tokens)} cls="teal"
-          sub={`平均 ${formatSizeNoB(avgTokens)} / 会话`} />
-        <StatCard icon="🧠" label="系统提示词" value={summary.system_prompts.toLocaleString()} cls="purple" sub="独立存储的提示词" />
-        <StatCard icon="🕐" label="最近活跃" value={sessions.length > 0 ? formatTime(sessions[0].last_activity_at) : '—'} cls="purple" />
+        <StatCard icon="💬" label={t('overview.totalSessions')} value={summary.sessions.toLocaleString()} cls="accent"
+          sub={t('overview.messagesSuffix', { n: summary.messages.toLocaleString() })} />
+        <StatCard icon="📊" label={t('overview.totalTokens')} value={formatSizeNoB(summary.total_tokens)} cls="teal"
+          sub={t('overview.avgTokens', { v: formatSizeNoB(avgTokens) })} />
+        <StatCard icon="🧠" label={t('overview.systemPrompts')} value={summary.system_prompts.toLocaleString()} cls="purple" sub={t('overview.systemPrompts')} />
+        <StatCard icon="🕐" label={t('overview.recentActive')} value={sessions.length > 0 ? formatTime(sessions[0].last_activity_at) : '—'} cls="purple" />
       </div>
 
       <div className="dash-cards-row">
         <div className="dash-card">
-          <div className="dash-card-title">Token 消耗 Top 会话</div>
+          <div className="dash-card-title">{t('overview.tokenTop')}</div>
           <div className="bar-chart">
             {topSessions.map(s => {
               const tokens = s.input_tokens + s.output_tokens;
@@ -377,12 +380,12 @@ function Dashboard({
         </div>
 
         <div className="dash-card">
-          <div className="dash-card-title">最近会话</div>
+          <div className="dash-card-title">{t('overview.recentSessions')}</div>
           <div className="recent-list">
             {sessions.slice(0, 8).map(s => (
               <div key={s.id} className="recent-item" onClick={() => onSelectSession(s.id)}>
-                <div className="ri-title">{s.title || '(无标题)'}</div>
-                <div className="ri-meta">{s.message_count} msg · {formatTime(s.last_activity_at)}</div>
+                <div className="ri-title">{s.title || t('turn.emptyTitle')}</div>
+                <div className="ri-meta">{t('overview.messagesSuffix', { n: s.message_count })} · {formatTime(s.last_activity_at)}</div>
               </div>
             ))}
           </div>
@@ -415,9 +418,10 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
   jumpToMsgId: number | null;
   onJumpHandled: () => void;
 }) {
+  const { t } = useI18n();
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
 
-  // 加载当前会话的系统提示词
+  // Load the system prompt for the current session
   useEffect(() => {
     let cancelled = false;
     setSystemPrompt(null);
@@ -427,7 +431,7 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
     return () => { cancelled = true; };
   }, [session.id]);
 
-  // 构造系统提示词消息（序号 #0）
+  // Build the system-prompt message (index #0)
   const sysMsg: Message | null = systemPrompt
     ? {
       id: -1,
@@ -451,10 +455,10 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
     <div className="conv-wrapper">
       <div className="conv-header">
         <div className="conv-title">
-          {session.title || '(无标题)'}
+          {session.title || t('turn.emptyTitle')}
           <span
             className="conv-id"
-            title="点击复制会话 ID"
+            title={t('conv.copyId')}
             onClick={() => {
               navigator.clipboard.writeText(session.id);
             }}
@@ -463,9 +467,9 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
           </span>
         </div>
         <div className="conv-meta">
-          <span>💬 <strong>{session.message_count}</strong> 消息</span>
-          <span>🔧 <strong>{session.tool_call_count}</strong> 工具调用</span>
-          <span>🔁 <strong>{session.api_call_count ?? 0}</strong> API 调用</span>
+          <span>💬 <strong>{session.message_count}</strong> {t('conv.messages')}</span>
+          <span>🔧 <strong>{session.tool_call_count}</strong> {t('conv.toolCalls')}</span>
+          <span>🔁 <strong>{session.api_call_count ?? 0}</strong> {t('conv.apiCalls')}</span>
           <span>📊 <strong>{formatSizeNoB(session.input_tokens + session.output_tokens)}</strong></span>
           {session.model && <span>🤖 <strong>{session.model}</strong></span>}
         </div>
@@ -500,6 +504,7 @@ function ToolCallsBlock({
   compact?: boolean;
   keyPrefix?: string;
 }) {
+  const { t } = useI18n();
   const prefix = keyPrefix ? `${keyPrefix}-` : '';
   return (
     <div className="msg-mini-tool">
@@ -527,7 +532,7 @@ function ToolCallsBlock({
                   className="tcid-chip"
                   onClick={onToolCallIdClick ? (e) => { e.stopPropagation(); onToolCallIdClick(tc.id); } : undefined}
                   style={{ cursor: onToolCallIdClick ? 'pointer' : 'default' }}
-                  title={onToolCallIdClick ? '跳转到工具结果' : tc.id}
+                  title={onToolCallIdClick ? t('msg.jumpToResult') : tc.id}
                 >
                   {tc.id}
                 </span>
@@ -563,18 +568,19 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
   jumpToMsgId: number | null;
   onJumpHandled: () => void;
 }) {
+  const { t } = useI18n();
   const [showReasoning, setShowReasoning] = useState<Record<number, boolean>>({});
   const [openToolDetails, setOpenToolDetails] = useState<Record<string, boolean>>({});
   const [expandedContent, setExpandedContent] = useState<Record<number, boolean>>({});
-  // 每个轮次 id(用用户消息 id 作 key) → 是否展开完整过程
+  // For each turn id (keyed by the user message id) → whether the full process is expanded
   const [openTurns, setOpenTurns] = useState<Record<number, boolean>>({});
 
-  // 外部跳转到指定消息：展开所在轮次并滚动到该消息
+  // External jump to a specific message: expand its turn and scroll to it
   useEffect(() => {
     if (jumpToMsgId == null) return;
-    // 消息还没加载完（不包含目标），保留状态等下次加载
+    // Messages not fully loaded yet (target absent); keep state until the next load
     if (!messages.some(m => m.id === jumpToMsgId)) return;
-    // 找到包含该消息的轮次并展开
+    // Find the turn containing the message and expand it
     let cur: Message[] = [];
     let targetTurn: Message[] | null = null;
     for (const m of messages) {
@@ -590,7 +596,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
     if (targetTurn) {
       const leadId = targetTurn[0].id;
       setOpenTurns(o => ({ ...o, [leadId]: true }));
-      // 等轮次展开渲染完成后滚动
+      // Wait for the turn to render expanded before scrolling
       setTimeout(() => {
         const el = document.getElementById(`msg-${jumpToMsgId}`);
         const convBody = document.querySelector('.conv-body');
@@ -609,14 +615,14 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
   }, [jumpToMsgId, messages]);
 
   if (messages.length === 0) {
-    return <EmptyState icon="💭" title="暂无消息" desc="该会话没有消息记录" />;
+    return <EmptyState icon="💭" title={t('conv.noMessages')} desc={t('conv.noMessages')} />;
   }
 
   function toggleTool(key: string) {
     setOpenToolDetails(o => ({ ...o, [key]: !o[key] }));
   }
 
-  // 滚动到指定消息（高亮闪烁）
+  // Scroll to a specific message (with a highlight flash)
   function scrollToMsg(id: number) {
     const el = document.getElementById(`msg-${id}`);
     const convBody = document.querySelector('.conv-body');
@@ -633,7 +639,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
     setTimeout(() => { el.style.boxShadow = 'none'; }, 1500);
   }
 
-  // 找到包含某 tool_call_id 的 assistant 消息（工具调用发起者）
+  // Find the assistant message that initiated a given tool_call_id
   function findToolCallerId(toolCallId: string): number | null {
     const caller = messages.find(m => {
       const tcs = parseToolCalls(m.tool_calls);
@@ -642,20 +648,20 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
     return caller ? caller.id : null;
   }
 
-  // 找到某 tool_call_id 对应的 tool 结果消息
+  // Find the tool result message for a given tool_call_id
   function findToolResultId(toolCallId: string): number | null {
     const result = messages.find(m => m.tool_call_id === toolCallId);
     return result ? result.id : null;
   }
 
-  // 按 user 消息切分为轮次（turn）
-  // 每条 user 消息开启一个轮次；其后的 assistant/tool 属于该轮，直到下一条 user
-  // 系统提示词(id=-1)单独成一个特殊轮次
+  // Split messages into turns by user message
+  // Each user message starts a new turn; subsequent assistant/tool messages belong to it until the next user
+  // The system prompt (id=-1) forms its own special turn
   const turns: Message[][] = [];
   let curTurn: Message[] = [];
   for (const m of messages) {
     const r = (m.role || '').toLowerCase();
-    // 系统提示词或新用户消息：开启新轮次
+    // System prompt or a new user message: start a new turn
     if (m.id === -1 || r === 'user') {
       if (curTurn.length > 0) turns.push(curTurn);
       curTurn = [m];
@@ -668,13 +674,13 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
   return (
     <div className="msg-card-list">
       {turns.map((turn) => {
-        // 第一个消息为 user（或系统提示词）
+        // First message is a user message (or system prompt)
         const lead = turn[0];
         const isSystemTurn = lead.id === -1;
         const turnKey = lead.id;
         const isOpen = !!openTurns[turnKey];
 
-        // 该轮的工具调用次数：统计所有 assistant 消息里 tool_calls 数组的元素总数
+        // Tool call count for this turn: total elements across all assistant tool_calls arrays
         const toolCount = turn.reduce((acc, m) => {
           const r = (m.role || '').toLowerCase();
           if (r === 'assistant') {
@@ -682,16 +688,16 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
           }
           return acc;
         }, 0);
-        // 该轮最后一条纯文本 assistant 回答（无工具调用）
+        // The last plain-text assistant reply in this turn (no tool calls)
         const finalAnswer = [...turn].reverse().find(m =>
           (m.role || '').toLowerCase() === 'assistant'
           && !parseToolCalls(m.tool_calls).length
           && (m.content || '').trim()
         );
-        // 非 user 消息（工具过程）数量：减去 user 和最终回答（两者在折叠时都显示）
+        // Count of non-user (tool process) messages: subtract the user and final answer (both shown when collapsed)
         const processCount = turn.length - 1 - (finalAnswer ? 1 : 0);
 
-        // 系统提示词轮次：直接展开显示
+        // System-prompt turn: show fully expanded
         if (isSystemTurn) {
           return (
             <div key={turnKey} className="turn-group">
@@ -713,7 +719,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
           );
         }
 
-        // 普通轮次：折叠时只显示 user + 最终回答
+        // Normal turn: when collapsed, show only the user message and the final answer
         return (
           <div key={turnKey} className="turn-group">
             <TurnHeader isOpen={isOpen} lead={lead}
@@ -721,7 +727,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
               onToggle={() => setOpenTurns(o => ({ ...o, [turnKey]: !o[turnKey] }))}
               canToggle={processCount > 0} />
             <div className="turn-body">
-              {/* 始终显示用户消息 */}
+              {/* Always show the user message */}
               <MessageCard key={lead.id} msg={lead} onViewRaw={onViewRaw}
                 showReasoning={showReasoning} setShowReasoning={setShowReasoning}
                 openToolDetails={openToolDetails} toggleTool={toggleTool}
@@ -729,7 +735,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
                 scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                 findToolResultId={findToolResultId}
               />
-              {/* 折叠时只显示最终回答 */}
+              {/* When collapsed, show only the final answer */}
               {!isOpen && finalAnswer && (
                 <MessageCard key={finalAnswer.id} msg={finalAnswer} onViewRaw={onViewRaw}
                   showReasoning={showReasoning} setShowReasoning={setShowReasoning}
@@ -739,18 +745,18 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
                   findToolResultId={findToolResultId}
                 />
               )}
-              {/* 折叠时：如果有工具过程被隐藏，显示醒目的展开提示条 */}
+              {/* When collapsed and tool processes are hidden, show a prominent expand hint */}
               {!isOpen && processCount > 0 && (
                 <div className="turn-more" onClick={() => setOpenTurns(o => ({ ...o, [turnKey]: !o[turnKey] }))}>
-                  <span className="turn-more-dots">···</span>
+                  <span className="turn-more-dots">{t('turn.moreDots')}</span>
                   <span className="turn-more-text">
-                    <span className="turn-more-fade">中间还进行了</span>
-                    <span className="turn-more-count">{toolCount} 次工具调用</span>
+                    <span className="turn-more-fade">{t('turn.moreText')}</span>
+                    <span className="turn-more-count">{t('turn.toolCalls', { n: toolCount })}</span>
                   </span>
-                  <span className="turn-more-btn">查看完整过程 ▾</span>
+                  <span className="turn-more-btn">{t('turn.viewMore')}</span>
                 </div>
               )}
-              {/* 展开时显示完整过程 */}
+              {/* When expanded, show the full process */}
               {isOpen && turn.slice(1).map(m => (
                 <MessageCard key={m.id} msg={m} onViewRaw={onViewRaw}
                   showReasoning={showReasoning} setShowReasoning={setShowReasoning}
@@ -768,7 +774,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
   );
 }
 
-/* ---- 轮次头部（折叠/展开控制） ---- */
+/* ---- Turn header (collapse/expand control) ---- */
 function TurnHeader({ isOpen, lead, toolCount, processCount, onToggle, canToggle }: {
   isOpen: boolean;
   lead: Message;
@@ -777,23 +783,24 @@ function TurnHeader({ isOpen, lead, toolCount, processCount, onToggle, canToggle
   onToggle: () => void;
   canToggle: boolean;
 }) {
+  const { t } = useI18n();
   if (lead.id === -1) {
-    // 系统提示词头部（不可折叠）
+    // System-prompt header (not collapsible)
     return (
       <div className="turn-header system">
         <span className="turn-chevron">•</span>
-        <span className="turn-title">🧠 系统提示词</span>
-        <span className="turn-meta">{(lead.content || '').length.toLocaleString()} chars</span>
+        <span className="turn-title">🧠 {t('turn.system')}</span>
+        <span className="turn-meta">{t('turn.charCount', { n: (lead.content || '').length.toLocaleString() })}</span>
       </div>
     );
   }
-  // 中间无内容的轮次：静态标题，不可点击展开/收缩（箭头用 •，与系统提示词一致）
+  // Turn with no intermediate content: static title, not clickable (arrow is •, matching the system prompt)
   if (!canToggle) {
     return (
       <div className="turn-header static">
         <span className="turn-chevron">•</span>
         <span className="turn-title">
-          {lead.content ? (lead.content.slice(0, 60) + (lead.content.length > 60 ? '…' : '')) : '(空消息)'}
+          {lead.content ? (lead.content.slice(0, 60) + (lead.content.length > 60 ? '…' : '')) : t('turn.emptyTitle')}
         </span>
         <span className="turn-meta">{formatTime(lead.created_at)}</span>
       </div>
@@ -803,20 +810,20 @@ function TurnHeader({ isOpen, lead, toolCount, processCount, onToggle, canToggle
     <div className="turn-header" onClick={onToggle}>
       <span className="turn-chevron">{isOpen ? '▼' : '▶'}</span>
       <span className="turn-title">
-        {lead.content ? (lead.content.slice(0, 60) + (lead.content.length > 60 ? '…' : '')) : '(空消息)'}
+        {lead.content ? (lead.content.slice(0, 60) + (lead.content.length > 60 ? '…' : '')) : t('turn.emptyTitle')}
       </span>
-      {toolCount > 0 && <span className="turn-badge">🔧 {toolCount} 次工具调用</span>}
+      {toolCount > 0 && <span className="turn-badge">🔧 {t('turn.toolCalls', { n: toolCount })}</span>}
       <span className="turn-meta">{formatTime(lead.created_at)}</span>
       {processCount > 0 && (
         <span className={`turn-action ${isOpen ? 'open' : ''}`}>
-          {isOpen ? '收起过程 ▴' : `展开 ${processCount} 条过程 ▾`}
+          {isOpen ? t('turn.collapse') : t('turn.expand', { n: processCount })}
         </span>
       )}
     </div>
   );
 }
 
-/* ---- 单条消息卡片（复用原渲染逻辑） ---- */
+/* ---- Individual message card (reusing the original rendering logic) ---- */
 function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
   openToolDetails, toggleTool, expandedContent, setExpandedContent,
   scrollToMsg, findToolCallerId, findToolResultId }: {
@@ -832,6 +839,7 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
   findToolCallerId: (toolCallId: string) => number | null;
   findToolResultId: (toolCallId: string) => number | null;
 }) {
+  const { t } = useI18n();
   const r = (msg.role || '').toLowerCase();
   const hasReasoning = !!msg.reasoning_content;
   const isReasoningOpen = !!showReasoning[msg.id];
@@ -865,7 +873,7 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
               if (callerId != null) scrollToMsg(callerId);
             }}
             style={{ cursor: 'pointer' }}
-            title="跳转到工具调用"
+            title={t('msg.jumpToCall')}
           >
             {msg.tool_call_id}
           </span>
@@ -875,7 +883,7 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
       {hasReasoning && (
         <>
           <button className="chat-reasoning-toggle" onClick={() => setShowReasoning(s => ({ ...s, [msg.id]: !s[msg.id] }))}>
-            {isReasoningOpen ? '▼' : '▶'} 🧠 推理过程
+            {isReasoningOpen ? '▼' : '▶'} 🧠 {t('msg.reasoning')}
           </button>
           {isReasoningOpen && <div className="chat-reasoning">{msg.reasoning_content}</div>}
         </>
@@ -883,12 +891,12 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
 
       {msg.content && <div className="msg-mini-body">{shownContent}</div>}
       {!msg.content && !hasReasoning && toolCalls.length === 0 && (
-        <div className="msg-mini-body" style={{ fontStyle: 'italic', opacity: 0.5 }}>(空消息)</div>
+        <div className="msg-mini-body" style={{ fontStyle: 'italic', opacity: 0.5 }}>{t('msg.empty')}</div>
       )}
 
       {isLong && (
         <button className="chip" style={{ marginTop: 8 }} onClick={() => setExpandedContent(s => ({ ...s, [msg.id]: !s[msg.id] }))}>
-          {isExpanded ? '▲ 收起' : `▼ 展开全文 (${charCount.toLocaleString()} chars)`}
+          {isExpanded ? `▲ ${t('msg.collapse')}` : t('msg.expandFull', { n: charCount.toLocaleString() })}
         </button>
       )}
 
@@ -906,14 +914,14 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
       )}
 
       <div className="chat-actions">
-        <button className="chip" onClick={() => onViewRaw(`消息 #${msg.id}`, {
+        <button className="chip" onClick={() => onViewRaw(`${t('msg.rawData')} #${msg.id}`, {
           id: msg.id, role: msg.role, content: msg.content,
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           tool_call_id: msg.tool_call_id || undefined,
           name: msg.name || undefined,
           reasoning_content: msg.reasoning_content || undefined,
           created_at: msg.created_at, token_count: msg.token_count,
-        })}>📋 原始数据</button>
+        })}>📋 {t('msg.rawData')}</button>
       </div>
     </div>
   );
@@ -923,6 +931,7 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
    Schema Page
    ================================================================ */
 function SchemaPage() {
+  const { t } = useI18n();
   const [tables, setTables] = useState<any[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
@@ -944,8 +953,8 @@ function SchemaPage() {
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">数据库表结构</div>
-        <div className="page-subtitle">浏览表结构、字段、索引和示例数据</div>
+        <div className="page-title">{t('schema.title')}</div>
+        <div className="page-subtitle">{t('schema.subtitle')}</div>
       </div>
       <div className="schema-layout">
         <div className="table-list">
@@ -960,7 +969,7 @@ function SchemaPage() {
           {detail && (
             <>
               <div className="schema-section">
-                <div className="schema-section-title">字段 ({detail.columns.length})</div>
+                <div className="schema-section-title">{t('schema.fields', { n: detail.columns.length })}</div>
                 {detail.columns.map((col: any) => (
                   <div key={col.cid} className="schema-col">
                     <span className="col-name">{col.name}</span>
@@ -974,7 +983,7 @@ function SchemaPage() {
               </div>
               {detail.indexes.length > 0 && (
                 <div className="schema-section">
-                  <div className="schema-section-title">索引 ({detail.indexes.length})</div>
+                  <div className="schema-section-title">{t('schema.indexes', { n: detail.indexes.length })}</div>
                   {detail.indexes.map((idx: any, i: number) => (
                     <div key={i} className="schema-col" style={{ flexWrap: 'wrap', gap: 8 }}>
                       <span className="col-name" style={{ width: 'auto', minWidth: 200 }}>{idx.name}</span>
@@ -994,7 +1003,7 @@ function SchemaPage() {
               )}
               {detail.sample_rows.length > 0 && (
                 <div className="schema-section">
-                  <div className="schema-section-title">示例数据 ({detail.sample_rows.length} 行)</div>
+                  <div className="schema-section-title">{t('schema.sample', { n: detail.sample_rows.length })}</div>
                   <div className="result-wrap" style={{ maxHeight: 300 }}>
                     <table className="result-table">
                       <thead>
@@ -1025,6 +1034,7 @@ function SchemaPage() {
    SQL Page
    ================================================================ */
 function SqlPage() {
+  const { t } = useI18n();
   const [sql, setSql] = useState('SELECT * FROM sessions ORDER BY started_at DESC LIMIT 20');
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -1041,18 +1051,18 @@ function SqlPage() {
   }
 
   const quickQueries: Record<string, string> = {
-    '最近会话': "SELECT id, title, message_count, input_tokens, output_tokens FROM sessions ORDER BY last_activity_at DESC LIMIT 20",
-    'Token Top 10': "SELECT title, input_tokens + output_tokens as total FROM sessions ORDER BY total DESC LIMIT 10",
-    '每日消息量': "SELECT date(timestamp, 'unixepoch') as d, COUNT(*) as cnt FROM messages GROUP BY d ORDER BY d DESC LIMIT 30",
-    '工具调用统计': "SELECT tool_name, COUNT(*) as cnt FROM messages WHERE tool_name IS NOT NULL AND tool_name != '' GROUP BY tool_name ORDER BY cnt DESC LIMIT 20",
-    '成本分布': "SELECT model, COUNT(*) as cnt, ROUND(SUM(estimated_cost_usd), 4) as cost FROM sessions GROUP BY model ORDER BY cost DESC",
+    [t('sql.qqRecent')]: "SELECT id, title, message_count, input_tokens, output_tokens FROM sessions ORDER BY last_activity_at DESC LIMIT 20",
+    [t('sql.qqTokenTop')]: "SELECT title, input_tokens + output_tokens as total FROM sessions ORDER BY total DESC LIMIT 10",
+    [t('sql.qqDaily')]: "SELECT date(timestamp, 'unixepoch') as d, COUNT(*) as cnt FROM messages GROUP BY d ORDER BY d DESC LIMIT 30",
+    [t('sql.qqTools')]: "SELECT tool_name, COUNT(*) as cnt FROM messages WHERE tool_name IS NOT NULL AND tool_name != '' GROUP BY tool_name ORDER BY cnt DESC LIMIT 20",
+    [t('sql.qqCost')]: "SELECT model, COUNT(*) as cnt, ROUND(SUM(estimated_cost_usd), 4) as cost FROM sessions GROUP BY model ORDER BY cost DESC",
   };
 
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">SQL 查询</div>
-        <div className="page-subtitle">直接查询 state.db，只读模式</div>
+        <div className="page-title">{t('sql.title')}</div>
+        <div className="page-subtitle">{t('sql.subtitle')}</div>
       </div>
 
       <div className="sql-toolbar">
@@ -1062,7 +1072,7 @@ function SqlPage() {
           ))}
         </div>
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={run} disabled={loading}>
-          {loading ? '执行中...' : '▶ 执行 (Ctrl+Enter)'}
+          {loading ? t('sql.executing') : t('sql.execute')}
         </button>
       </div>
 
@@ -1083,7 +1093,7 @@ function SqlPage() {
       {result?.columns && (
         <>
           <div className="result-meta">
-            {result.rows.length} 行
+            {t('sql.rows', { n: result.rows.length })}
           </div>
           <div className="result-wrap">
             <table className="result-table">
@@ -1114,6 +1124,7 @@ function SettingsModal({ onClose, dbMeta }: {
   onClose: () => void;
   dbMeta: { path?: string; size: number; name: string };
 }) {
+  const { t, lang, setLang } = useI18n();
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onEsc);
@@ -1124,18 +1135,38 @@ function SettingsModal({ onClose, dbMeta }: {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-dialog" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">⚙️ 设置</span>
+          <span className="modal-title">⚙️ {t('settings.title')}</span>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
           <div className="settings-group">
-            <div className="settings-label">📁 当前加载的数据库文件</div>
+            <div className="settings-label">{t('settings.language')}</div>
+            <div className="settings-options">
+              <button
+                className={`chip ${lang === 'zh' ? 'chip-active' : ''}`}
+                onClick={() => setLang('zh')}
+              >{t('settings.langZh')}</button>
+              <button
+                className={`chip ${lang === 'en' ? 'chip-active' : ''}`}
+                onClick={() => setLang('en')}
+              >{t('settings.langEn')}</button>
+            </div>
+          </div>
+          <div className="settings-group">
+            <div className="settings-label">📁 {t('settings.loadedFile')}</div>
             <div className="db-status-card">
               <div className="dsc-head">
                 <span className="dsc-name">state.db</span>
                 <span className="dsc-size">{formatSize(dbMeta.size)}</span>
               </div>
-              <div className="dsc-path">{dbMeta.path || '（未知路径）'}</div>
+              <div className="dsc-path">{dbMeta.path || t('settings.path')}</div>
+            </div>
+          </div>
+          <div className="settings-group">
+            <div className="settings-label">{t('settings.about')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              {t('settings.info')}<br />
+              {t('settings.readonly')}
             </div>
           </div>
         </div>

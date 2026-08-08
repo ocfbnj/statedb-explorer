@@ -1,9 +1,14 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Vite 配置（Electron 客户端）：
-//  - base './' 使打包产物可用 file:// 协议加载（Electron loadFile）
-//  - 数据库读取由 Electron 主进程通过 IPC 提供，无需 HTTP proxy
+// Vite config (Electron client):
+//  - base './' so the build output can be loaded via the file:// protocol (Electron loadFile)
+//  - database reads are served by the Electron main process over IPC (no HTTP proxy)
+//
+// The `test` block is only used by Vitest. It reuses the React plugin so JSX
+// transforms correctly, and uses the jsdom environment so tests that touch
+// browser globals (localStorage, navigator) can run.
 export default defineConfig({
   plugins: [react()],
   base: './',
@@ -13,5 +18,10 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+  },
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts'],
+    globals: true,
   },
 });

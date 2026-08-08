@@ -53,7 +53,7 @@ export interface SystemPrompt {
   use_count: number;
 }
 
-/* ==================== IPC 桥（Electron） ==================== */
+/* ==================== IPC bridge (Electron) ==================== */
 
 interface StateDBBridge {
   init(): Promise<{ ok: boolean }>;
@@ -80,40 +80,40 @@ function progress(stage: string, percent: number) {
   if (onProgressFn) onProgressFn(stage, percent);
 }
 
-/* ==================== DB 状态 ==================== */
+/* ==================== DB state ==================== */
 
 let dbMeta = { path: '', size: 0, name: '' };
 let readyResolve: () => void;
 const ready = new Promise<void>(resolve => { readyResolve = resolve; });
 
 function bridge(): StateDBBridge {
-  if (!window.stateDB) throw new Error('Electron IPC 桥不可用（请用 Electron 客户端运行）');
+  if (!window.stateDB) throw new Error('Electron IPC bridge unavailable (run this in the Electron client)');
   return window.stateDB;
 }
 
-/** 初始化：等待 Electron 主进程数据库就绪，然后自动加载 state.db */
+/** Initialize: wait for the Electron main-process DB to be ready, then auto-load state.db */
 async function init() {
   try {
     await bridge().init();
-    progress('初始化数据库连接', 20);
+    progress('load.init', 20);
     const res = await bridge().autoload();
     if (res.ok) {
       dbMeta = { path: res.path || '', size: res.size || 0, name: res.name || 'state.db' };
-      progress('state.db 加载完成', 100);
+      progress('load.loaded', 100);
     } else {
-      // 自动加载失败，提示用户手动选择
-      progress(`未自动找到 state.db: ${res.error}`, 30);
+      // Auto-load failed; prompt the user to pick a file manually
+      progress('load.dbNotFound', 30);
       const picked = await bridge().pick();
       if (picked.ok) {
         dbMeta = { path: picked.path || '', size: picked.size || 0, name: picked.name || 'state.db' };
-        progress('state.db 加载完成', 100);
+        progress('load.loaded', 100);
       } else {
-        throw new Error(res.error || '未加载数据库');
+        throw new Error(res.error || 'load.failed');
       }
     }
   } catch (e: any) {
     console.error('DB init failed:', e);
-    progress(`加载失败: ${e.message}`, 0);
+    progress(`load.failed: ${e.message}`, 0);
   }
   readyResolve();
 }
@@ -123,16 +123,16 @@ init();
 export function whenReady() { return ready; }
 
 function requireReady() {
-  if (!dbMeta.path) throw new Error('state.db 未加载');
+  if (!dbMeta.path) throw new Error('state.db not loaded');
 }
 
-/* ==================== 查询封装 ==================== */
+/* ==================== Query wrappers ==================== */
 
 async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
   await ready;
   requireReady();
   const res = await bridge().query(sql, params);
-  if (!res.ok) throw new Error(res.error || '查询失败');
+  if (!res.ok) throw new Error(res.error || 'Query failed');
   return (res.rows || []) as T[];
 }
 
@@ -140,7 +140,7 @@ async function queryOne<T = any>(sql: string, params: any[] = []): Promise<T | n
   await ready;
   requireReady();
   const res = await bridge().queryOne(sql, params);
-  if (!res.ok) throw new Error(res.error || '查询失败');
+  if (!res.ok) throw new Error(res.error || 'Query failed');
   return (res.row ?? null) as T | null;
 }
 
@@ -148,7 +148,7 @@ async function execSql(sql: string) {
   await ready;
   requireReady();
   const res = await bridge().exec(sql);
-  if (!res.ok) throw new Error(res.error || '执行失败');
+  if (!res.ok) throw new Error(res.error || 'Execution failed');
   return { columns: res.columns || [], rows: res.rows || [] };
 }
 
@@ -187,7 +187,7 @@ export const api = {
     }
     const countRow = await queryOne<{ c: number }>(`SELECT COUNT(*) as c FROM sessions ${where}`, queryParams);
     const rows = await query<any>(`
-      SELECT id, COALESCE(title, '(无标题)') as title,
+      SELECT id, COALESCE(title, '') as title,
              started_at as started_at,
              COALESCE(last_activity_at, started_at) as last_activity_at,
              COALESCE(last_activity_description, '') as last_activity_description,
@@ -223,7 +223,7 @@ export const api = {
     `, [sessionId]);
   },
 
-  /** 按消息 id 查找，返回消息及其所属会话（用于按 id 定位） */
+  /** Find a message by id, returning the message and its session (for id-based navigation) */
   getMessageById: async (id: number): Promise<Message | null> => {
     return queryOne<Message>(`
       SELECT id, session_id, role, content,
@@ -305,7 +305,7 @@ export const api = {
     return execSql(sql);
   },
 
-  /** 重新从磁盘加载 state.db，返回新的元信息 */
+  /** Reload state.db from disk, returning updated metadata */
   reload: async (): Promise<{ ok: boolean; error?: string; path?: string; size?: number; name?: string }> => {
     const res = await bridge().reload();
     if (res.ok) {
@@ -327,7 +327,7 @@ export function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
-/** 格式化大小但去掉 B 单位（用于 token 数量展示，如 1.6 M / 794 K） */
+/** Format size without the "B" unit (for token counts, e.g. 1.6 M / 794 K) */
 export function formatSizeNoB(bytes: number): string {
   if (!bytes || bytes < 0) return '0';
   if (bytes < 1024) return String(bytes);

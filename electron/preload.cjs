@@ -1,6 +1,6 @@
 // ============================================================
 // StateDB Explorer — preload
-// 通过 contextBridge 暴露安全的 IPC 接口给渲染进程
+// Expose a safe IPC interface to the renderer process via contextBridge.
 // ============================================================
 const { contextBridge, ipcRenderer } = require('electron');
 

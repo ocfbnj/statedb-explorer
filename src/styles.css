@@ -1,35 +1,35 @@
 /* ============================================================
-   StateDB Explorer — VS Code 2026 Dark 主题
-   官方色值来源: extensions/theme-defaults/themes/2026-dark.json
+   StateDB Explorer — a modern dark theme
+   Official color values from: extensions/theme-defaults/themes/2026-dark.json
    ============================================================ */
 
 :root {
-  /* 2026 Dark 官方配色 */
-  --bg-base: #121314;          /* editor.background 主背景 */
+  /* Official 2026 Dark color palette */
+  --bg-base: #121314;          /* editor.background main background */
   --bg-surface: #191A1B;       /* sideBar/activityBar/titleBar/statusBar/panel */
-  --bg-surface-2: #202122;     /* editorWidget/menu/dropdown 弹窗 */
-  --bg-hover: #FFFFFF14;       /* list.hoverBackground 8% 白 */
-  --bg-active: #FFFFFF22;      /* list.activeSelectionBackground 13% 白 */
+  --bg-surface-2: #202122;     /* editorWidget/menu/dropdown popups */
+  --bg-hover: #FFFFFF14;       /* list.hoverBackground 8% white */
+  --bg-active: #FFFFFF22;      /* list.activeSelectionBackground 13% white */
   --bg-inactive-selection: #2C2D2E;
   --bg-line-highlight: #242526;
   --bg-rail-active: #313233;   /* activityBar.activeBackground */
-  --border: #2A2B2C;           /* 全局边框 */
+  --border: #2A2B2C;           /* global border */
   --border-input: #333536;     /* input.border */
-  --text-primary: #bfbfbf;     /* 主文本 (tab.activeForeground/input.foreground) */
+  --text-primary: #bfbfbf;     /* primary text (tab.activeForeground/input.foreground) */
   --text-secondary: #BBBEBF;   /* editor.foreground */
-  --text-muted: #8C8C8C;       /* descriptionForeground/次级文本 */
+  --text-muted: #8C8C8C;       /* descriptionForeground/secondary text */
   --text-faint: #555555;       /* input.placeholderForeground */
-  --accent: #297AA0;           /* button.background 青蓝 */
+  --accent: #297AA0;           /* button.background cyan-blue */
   --accent-hover: #2B7DA3;     /* button.hoverBackground */
   --accent-dim: #FFFFFF14;
-  --focus: #3994BC;            /* focusBorder 青蓝 */
+  --focus: #3994BC;            /* focusBorder cyan-blue */
   --badge: #307E9F;            /* badge.background */
-  --success: #4EC9B0;          /* 绿青 */
-  --error: #F48771;            /* 红 */
-  --warning: #DCDCAA;          /* 黄 */
-  --purple: #C586C0;           /* 紫 */
-  --teal: #4EC9B0;             /* 青 */
-  --peach: #CE9178;            /* 橙 */
+  --success: #4EC9B0;          /* green-cyan */
+  --error: #F48771;            /* red */
+  --warning: #DCDCAA;          /* yellow */
+  --purple: #C586C0;           /* purple */
+  --teal: #4EC9B0;             /* cyan */
+  --peach: #CE9178;            /* orange */
   --radius: 4px;
   --radius-sm: 3px;
   --radius-lg: 6px;
@@ -37,8 +37,8 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --font-sans: 'Inter', 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
-  --header-h: 35px;            /* VS Code 原生标题栏高度 ~35px */
-  --rail-w: 48px;              /* 活动栏宽度 */
+  --header-h: 35px;            /* native title bar height ~35px */
+  --rail-w: 48px;              /* activity bar width */
   --sesslist-w: 300px;
   --footer-h: 24px;
 }
@@ -71,7 +71,7 @@ body {
   height: 100vh;
 }
 
-/* ---- Header (自绘标题栏, VS Code 风格) ---- */
+/* ---- Header (custom-drawn title bar) ---- */
 .header {
   display: flex;
   align-items: center;
@@ -80,8 +80,8 @@ body {
   border-bottom: 1px solid var(--border);
   gap: 10px;
   z-index: 50;
-  height: 35px; /* VS Code 原生标题栏高度 */
-  /* 整条 header 作为窗口拖拽区 */
+  height: 35px; /* native title bar height */
+  /* The whole header acts as the window drag region */
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -150,7 +150,7 @@ body {
   display: flex;
   align-items: center;
   gap: 2px;
-  /* 预留右侧空间给 titleBarOverlay 的窗口控制按钮 */
+  /* Reserve space on the right for the titleBarOverlay window control buttons */
   margin-right: 138px;
 }
 
@@ -187,10 +187,10 @@ body {
   overflow: hidden;
 }
 
-/* ---- Rail Sidebar (2026 Dark 活动栏) ---- */
+/* ---- Rail Sidebar (2026 Dark activity bar) ---- */
 .sidebar-rail {
   width: var(--rail-w);
-  background: var(--bg-surface); /* #191A1B 与面板统一 */
+  background: var(--bg-surface); /* #191A1B unified with the panel */
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -210,7 +210,7 @@ body {
   gap: 2px;
   border: none;
   background: transparent;
-  color: var(--text-muted); /* #8C8C8C 未激活图标 */
+  color: var(--text-muted); /* #8C8C8C inactive icon */
   border-radius: 0;
   cursor: pointer;
   font-size: 18px;
@@ -229,7 +229,7 @@ body {
 }
 
 .rail-item.active {
-  color: var(--text-primary); /* #bfbfbf 激活 */
+  color: var(--text-primary); /* #bfbfbf active */
 }
 
 .rail-item.active::before {
@@ -337,7 +337,7 @@ body {
 }
 
 .session-item.active {
-  background: var(--bg-active); /* #FFFFFF22 半透明白 */
+  background: var(--bg-active); /* #FFFFFF22 translucent white */
 }
 
 .session-item .session-title {
@@ -576,7 +576,7 @@ body {
   flex-wrap: wrap;
 }
 
-/* 可点击复制的会话 ID */
+/* Clickable, copyable session ID */
 .conv-id {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -648,7 +648,7 @@ body {
 .conv-body {
   flex: 1;
   overflow-y: auto;
-  /* 顶部无 padding，让 sticky 轮次头能吸附到最顶部 */
+  /* No top padding so sticky turn headers can stick to the very top */
   padding: 0 32px 20px;
 }
 
@@ -709,18 +709,30 @@ body {
   color: var(--accent);
 }
 
+.chip.chip-active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-options {
+  display: flex;
+  gap: 8px;
+}
+
 /* ---- Messages ---- */
 .msg-card-list {
-  /* 用 block 布局而非 flex+gap，确保 sticky 吸顶在 flex 容器中可靠工作 */
+  /* Use block layout rather than flex+gap so sticky headers work reliably inside a flex container */
   display: block;
   padding: 16px 0 4px;
 }
 
-/* ---- 轮次分组 ---- */
+/* ---- Turn groups ---- */
 .turn-group {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  /* 不能用 overflow:hidden，否则会破坏 turn-header 的 sticky 吸顶 */
+  /* Cannot use overflow:hidden or it will break the turn-header sticky behavior */
   overflow: visible;
   background: var(--bg-base);
   margin-bottom: 10px;
@@ -737,7 +749,7 @@ body {
   transition: background .15s;
   user-select: none;
   flex-wrap: wrap;
-  /* 吸顶：滚动时停留在此轮次顶部 */
+  /* Sticky: stays at the top of this turn while scrolling */
   position: sticky;
   top: 0;
   z-index: 3;
@@ -813,7 +825,7 @@ body {
   color: var(--text-muted);
 }
 
-/* 折叠状态的"更多内容"提示条 */
+/* "More content" hint bar shown when collapsed */
 .turn-more {
   display: flex;
   align-items: center;
@@ -1262,7 +1274,7 @@ body {
   color: var(--success);
 }
 
-/* ---- Footer 刷新按钮（VS Code 状态栏图标风格） ---- */
+/* ---- Footer refresh button (status-bar icon style) ---- */
 .panel-refresh {
   display: inline-flex;
   align-items: center;
