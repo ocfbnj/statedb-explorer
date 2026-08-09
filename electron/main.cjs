@@ -146,6 +146,8 @@ function createWindow() {
     minHeight: 640,
     backgroundColor: '#121314', /* 2026 Dark editor.background */
     title: 'StateDB Explorer',
+    // App icon (used by the window in dev and by the packaged executable)
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     // Custom title bar: hide the system title bar, draw it in HTML, keep the native window controls
     titleBarStyle: 'hidden',
     titleBarOverlay: {
