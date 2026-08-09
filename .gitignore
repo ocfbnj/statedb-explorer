@@ -1,19 +1,20 @@
-# 依赖
+# Dependencies
 node_modules/
 
-# 构建产物
+# Build output
 dist/
+release/
 *.tsbuildinfo
 
-# 日志
+# Logs
 *.log
 npm-debug.log*
 
-# 编辑器/系统
+# Editor / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# 本地运行文件
+# Local runtime files
 *.local

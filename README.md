@@ -65,6 +65,20 @@ npm run build           # type-check + build the renderer to dist/
 npm start               # run Electron against the built frontend
 ```
 
+### Build a standalone executable
+
+[electron-builder](https://www.electronjs.org/docs/latest/tutorial/electron-builder-cli) packages the app into a distributable executable for your current platform. Output goes to `release/`.
+
+```bash
+npm run dist            # build + package for the current platform (Windows: NSIS installer, macOS: dmg, Linux: AppImage)
+npm run dist:dir        # build + produce an unpacked app directory only (fast, no installer)
+npm run dist:win        # Windows installer
+npm run dist:mac        # macOS dmg
+npm run dist:linux      # Linux AppImage
+```
+
+The unpacked result is a runnable app (e.g. `release/win-unpacked/StateDB Explorer.exe` on Windows). Note: packaging for a platform other than the one you are building on generally requires that platform (or CI).
+
 ## Data Location
 
 The main process auto-detects the Hermes home directory (where `state.db` lives) — the same logic as the Hermes source's `get_hermes_home()`:
