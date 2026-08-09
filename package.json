@@ -44,6 +44,8 @@
   "build": {
     "appId": "com.ocfbnj.statedb-explorer",
     "productName": "StateDB Explorer",
+    "electronLanguages": ["en", "zh-CN"],
+    "compression": "maximum",
     "files": [
       "dist/**",
       "electron/**",
