@@ -186,7 +186,7 @@ export function JsonTree({ data, initialExpanded = true, maxExpandDepth = 2 }: J
               }}
             >
               <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2.5 1 L7.5 5 L2.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
             {indent}{keyLabel}

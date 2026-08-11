@@ -992,7 +992,7 @@ body {
   display: block;
 }
 .chevron.open {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 .turn-title {
@@ -1832,7 +1832,7 @@ body {
 }
 
 .jt-line.jt-open>.jt-content>.jt-toggle {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 .jt-key { color: var(--accent); }

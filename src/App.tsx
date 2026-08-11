@@ -682,11 +682,12 @@ function callStatus(c: ApiCall): 'ok' | 'error' | 'retried' {
 }
 
 /* ---- Chevron (consistent Apple-style expand/collapse indicator) ---- */
+// Collapsed -> points right (expandable); open -> rotates 90deg to point down.
 function Chevron({ open, size = 9 }: { open?: boolean; size?: number }) {
   return (
     <span className={`chevron ${open ? 'open' : ''}`} style={{ width: size }}>
       <svg width={size} height={size} viewBox="0 0 10 10" fill="none">
-        <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2.5 1 L7.5 5 L2.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
   );
