@@ -513,7 +513,7 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
       />
 
       <div className="conv-body">
-        <MessageList messages={allMessages} onViewRaw={onViewRaw} jumpToMsgId={jumpToMsgId} onJumpHandled={onJumpHandled} />
+        <MessageList messages={allMessages} onViewRaw={onViewRaw} jumpToMsgId={jumpToMsgId} onJumpHandled={onJumpHandled} sessionId={session.id} />
       </div>
     </div>
   );
@@ -811,11 +811,12 @@ function ToolCallsBlock({
 }
 
 /* ---- Message List ---- */
-function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
+function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionId }: {
   messages: Message[];
   onViewRaw: (t: string, d: any) => void;
   jumpToMsgId: number | null;
   onJumpHandled: () => void;
+  sessionId?: string;
 }) {
   const { t } = useI18n();
   const [showReasoning, setShowReasoning] = useState<Record<number, boolean>>({});
@@ -823,6 +824,35 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
   const [expandedContent, setExpandedContent] = useState<Record<number, boolean>>({});
   // For each turn id (keyed by the user message id) → whether the full process is expanded
   const [openTurns, setOpenTurns] = useState<Record<number, boolean>>({});
+
+  // Look up the API call that produced this message, then open its request/response.
+  // assistant messages join by message_id (exact); tool messages fall back to
+  // their tool_call_id which is stored in the same api_call row.
+  const [apiCallLoading, setApiCallLoading] = useState(false);
+  const [apiCallMiss, setApiCallMiss] = useState<number | null>(null);
+  const onViewApiCall = useCallback(async (msgId: number | null, toolCallId: string | null) => {
+    if (!sessionId) return;
+    setApiCallLoading(true);
+    try {
+      const call = msgId != null
+        ? await api.getCallByMessageId(sessionId, msgId)
+        : (toolCallId ? await api.getCallByToolCallId(sessionId, toolCallId) : null);
+      if (call) {
+        // Open the JSON viewer with the request (larger payload usually)
+        try { onViewRaw(t('api.request'), JSON.parse(call.request || '{}')); }
+        catch { onViewRaw(t('api.request'), call.request); }
+        setApiCallMiss(null);
+      } else {
+        // No api_hook record for this message (e.g. created before the
+        // plugin was installed) — flash a transient hint.
+        setApiCallMiss(msgId);
+        setTimeout(() => setApiCallMiss(v => (v === msgId ? null : v)), 1800);
+      }
+    } catch (e: any) {
+      console.error('api lookup failed', e);
+    }
+    setApiCallLoading(false);
+  }, [sessionId, onViewRaw, t]);
 
   // External jump to a specific message: expand its turn and scroll to it
   useEffect(() => {
@@ -961,6 +991,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
                     expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                     scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                     findToolResultId={findToolResultId}
+                    onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
                   />
                 ))}
               </div>
@@ -983,6 +1014,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
                 expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                 scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                 findToolResultId={findToolResultId}
+                onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
               />
               {/* When collapsed, show only the final answer */}
               {!isOpen && finalAnswer && (
@@ -992,6 +1024,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
                   expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                   scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                   findToolResultId={findToolResultId}
+                  onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
                 />
               )}
               {/* When collapsed and tool processes are hidden, show a prominent expand hint */}
@@ -1013,6 +1046,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
                   expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                   scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                   findToolResultId={findToolResultId}
+                  onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
                 />
               ))}
             </div>
@@ -1075,7 +1109,8 @@ function TurnHeader({ isOpen, lead, toolCount, processCount, onToggle, canToggle
 /* ---- Individual message card (reusing the original rendering logic) ---- */
 function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
   openToolDetails, toggleTool, expandedContent, setExpandedContent,
-  scrollToMsg, findToolCallerId, findToolResultId }: {
+  scrollToMsg, findToolCallerId, findToolResultId,
+  onViewApiCall, apiCallLoading, apiCallMiss }: {
   msg: Message;
   onViewRaw: (t: string, d: any) => void;
   showReasoning: Record<number, boolean>;
@@ -1087,6 +1122,9 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
   scrollToMsg: (id: number) => void;
   findToolCallerId: (toolCallId: string) => number | null;
   findToolResultId: (toolCallId: string) => number | null;
+  onViewApiCall?: (msgId: number | null, toolCallId: string | null) => void;
+  apiCallLoading?: boolean;
+  apiCallMiss?: number | null;
 }) {
   const { t } = useI18n();
   const r = (msg.role || '').toLowerCase();
@@ -1163,6 +1201,19 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
       )}
 
       <div className="chat-actions">
+        {onViewApiCall && (r === 'assistant' || toolCalls.length > 0 || (r === 'tool' && msg.tool_call_id)) && (
+          <button
+            className="chip chip-api"
+            disabled={!!apiCallLoading}
+            onClick={() => onViewApiCall(
+              (r === 'assistant' || toolCalls.length > 0) ? msg.id : null,
+              (r === 'tool' && msg.tool_call_id) ? msg.tool_call_id : null
+            )}
+            title={t('msg.viewApiCall')}
+          >
+            {apiCallLoading ? '…' : apiCallMiss === msg.id ? t('msg.apiNone') : '⚡'} {t('msg.apiReqResp')}
+          </button>
+        )}
         <button className="chip" onClick={() => onViewRaw(`${t('msg.rawData')} #${msg.id}`, {
           id: msg.id, role: msg.role, content: msg.content,
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,

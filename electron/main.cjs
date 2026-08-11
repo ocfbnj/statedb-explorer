@@ -149,38 +149,20 @@ function registerIpc() {
   });
 
   // List API request/response records for a session from api_hook.db.
-  // Each api_call row is joined to the assistant message whose timestamp falls
-  // inside the call's [started_at, ended_at] window (messages are written right
-  // after the API response arrives). Returns rows with the message id attached.
+  // Each api_call row carries the assistant message id it produced
+  // (message_id, backfilled by the plugin), so the join is exact.
   ipcMain.handle('api:listApiCalls', (_e, sessionId) => {
     if (!apiHookDb) return { ok: true, rows: [], available: false };
     try {
-      const stmt = apiHookDb.prepare(`
-        WITH candidates AS (
-          SELECT c.api_request_id, c.session_id, c.started_at, c.ended_at,
-                 m.id AS message_id,
-                 ABS(m.timestamp - COALESCE(c.ended_at, c.started_at)) AS dist
-          FROM api_calls c
-          LEFT JOIN state.messages m
-            ON m.session_id = c.session_id AND m.role = 'assistant'
-           AND m.timestamp >= c.started_at
-           AND m.timestamp <= COALESCE(c.ended_at, c.started_at) + 2
-          WHERE c.session_id = ?
-        ),
-        ranked AS (
-          SELECT *, ROW_NUMBER() OVER (PARTITION BY api_request_id ORDER BY dist) AS rn
-          FROM candidates
-        )
-        SELECT c.api_request_id, c.session_id, c.api_call_count, c.retry_count,
-               c.model, c.provider, c.api_mode, c.started_at, c.ended_at,
-               c.finish_reason, c.response_model, c.request, c.response, c.usage,
-               r.message_id
-        FROM api_calls c
-        LEFT JOIN ranked r ON r.api_request_id = c.api_request_id AND r.rn = 1
-        WHERE c.session_id = ?
-        ORDER BY c.started_at ASC
-      `);
-      const rows = stmt.all(sessionId, sessionId);
+      const rows = apiHookDb.prepare(`
+        SELECT api_request_id, session_id, api_call_count, retry_count,
+               model, provider, api_mode, started_at, ended_at,
+               finish_reason, response_model, request, response, usage,
+               message_id
+        FROM api_calls
+        WHERE session_id = ?
+        ORDER BY started_at ASC
+      `).all(sessionId);
       return { ok: true, rows, available: true };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -189,6 +171,46 @@ function registerIpc() {
 
   // Whether api_hook.db was found alongside state.db
   ipcMain.handle('api:hookAvailable', () => ({ ok: true, available: !!apiHookDb }));
+
+  // Look up the API call that produced a given assistant message (exact id join).
+  ipcMain.handle('api:getCallByMessageId', (_e, sessionId, messageId) => {
+    if (!apiHookDb || messageId == null) return { ok: true, row: null };
+    try {
+      const row = apiHookDb.prepare(`
+        SELECT api_request_id, session_id, model, provider, api_mode,
+               started_at, ended_at, finish_reason, response_model,
+               request, response, usage, message_id
+        FROM api_calls
+        WHERE session_id = ? AND message_id = ?
+        LIMIT 1
+      `).get(sessionId, messageId);
+      return { ok: true, row: row ?? null };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  // Look up the API call that produced a given tool result (exact id join
+  // via the plugin's tool_call_ids column; LIKE fallback for old rows).
+  ipcMain.handle('api:getCallByToolCallId', (_e, sessionId, toolCallId) => {
+    if (!apiHookDb || !toolCallId) return { ok: true, row: null };
+    try {
+      const row = apiHookDb.prepare(`
+        SELECT api_request_id, session_id, model, provider, api_mode,
+               started_at, ended_at, finish_reason, response_model,
+               request, response, usage, message_id
+        FROM api_calls
+        WHERE session_id = ?
+          AND (tool_call_ids LIKE '%' || ? || '%' OR response LIKE '%' || ? || '%')
+        ORDER BY
+          CASE WHEN tool_call_ids LIKE '%' || ? || '%' THEN 0 ELSE 1 END
+        LIMIT 1
+      `).get(sessionId, toolCallId, toolCallId, toolCallId);
+      return { ok: true, row: row ?? null };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
 }
 
 // ============================================================

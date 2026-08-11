@@ -935,6 +935,21 @@ body {
   color: var(--text-primary);
 }
 
+/* API request/response lookup chip on message cards */
+.chip-api {
+  color: var(--accent);
+  border-color: rgba(41, 122, 160, .35);
+}
+.chip-api:hover {
+  background: rgba(41, 122, 160, .12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chip-api:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
 .chip.active {
   background: var(--accent-dim);
   border-color: var(--accent);
