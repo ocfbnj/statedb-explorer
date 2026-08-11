@@ -154,6 +154,11 @@ const en: Record<string, string> = {
   'api.request': 'Request',
   'api.response': 'Response',
   'api.viewJson': 'View JSON',
+  'api.retry': 'retry ×{n}',
+  'api.finishReason': 'Finish reason',
+  'api.responseModel': 'Response model',
+  'api.tokens': 'Tokens',
+  'api.tokenDetail': '{i} in · {o} out · {c} cached',
 };
 
 const zh: Record<string, string> = {
@@ -266,6 +271,11 @@ const zh: Record<string, string> = {
   'api.request': '请求',
   'api.response': '响应',
   'api.viewJson': '查看 JSON',
+  'api.retry': '重试 ×{n}',
+  'api.finishReason': '结束原因',
+  'api.responseModel': '响应模型',
+  'api.tokens': 'Token',
+  'api.tokenDetail': '{i} 输入 · {o} 输出 · {c} 缓存',
 };
 
 /** Interpolate simple `{key}` placeholders. */

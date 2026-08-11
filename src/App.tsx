@@ -538,12 +538,32 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
     );
   }
 
+  // Tally usage across all calls for the panel summary
+  const totalUsage = calls.reduce((acc, c) => {
+    const u = parseUsage(c.usage);
+    acc.input += u.input;
+    acc.output += u.output;
+    acc.cache += u.cache;
+    return acc;
+  }, { input: 0, output: 0, cache: 0 });
+
   return (
     <div className={`api-panel ${open ? 'open' : ''}`}>
       <div className="api-panel-header" onClick={onToggle}>
-        <span className="api-panel-caret">{open ? '▼' : '▶'}</span>
+        <span className={`api-panel-caret ${open ? 'open' : ''}`}>
+          <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+            <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
         <span className="api-panel-title">🌐 {t('api.title')}</span>
         <span className="api-panel-count">{t('api.count', { n: calls.length })}</span>
+        {calls.length > 0 && (
+          <span className="api-panel-usage">
+            <span className="usage-seg usage-in">▲ {formatSizeNoB(totalUsage.input)}</span>
+            <span className="usage-seg usage-out">▼ {formatSizeNoB(totalUsage.output)}</span>
+            <span className="usage-seg usage-cache">◎ {formatSizeNoB(totalUsage.cache)}</span>
+          </span>
+        )}
       </div>
       {open && (
         <div className="api-panel-body">
@@ -552,18 +572,31 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
           )}
           {calls.map(c => {
             const isExp = !!expanded[c.api_request_id];
+            const usage = parseUsage(c.usage);
+            const status = callStatus(c);
             return (
-              <div key={c.api_request_id} className="api-call">
+              <div key={c.api_request_id} className={`api-call ${isExp ? 'open' : ''}`}>
                 <div
                   className="api-call-header"
                   onClick={() => setExpanded(e => ({ ...e, [c.api_request_id]: !e[c.api_request_id] }))}
                 >
-                  <span className="api-call-caret">{isExp ? '▼' : '▶'}</span>
-                  <span className="api-call-model">{c.model || '—'}</span>
+                  <span className={`api-call-dot status-${status}`} title={status} />
+                  <span className="api-call-caret">
+                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                      <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <div className="api-call-main">
+                    <span className="api-call-model">{c.model || '—'}</span>
+                    {c.provider && <span className="api-call-provider">{c.provider}</span>}
+                  </div>
+                  <span className="api-call-usage">
+                    <span className="usage-seg usage-in">{formatSizeNoB(usage.input)}</span>
+                    <span className="usage-seg usage-out">{formatSizeNoB(usage.output)}</span>
+                  </span>
                   {c.retry_count > 0 && (
-                    <span className="api-call-retry">retry×{c.retry_count}</span>
+                    <span className="api-call-retry">{t('api.retry', { n: c.retry_count })}</span>
                   )}
-                  <span className="api-call-finish">{c.finish_reason || ''}</span>
                   <span className="api-call-time">{formatTime(c.started_at)}</span>
                   {c.message_id != null && (
                     <span className="api-call-msg">→ msg #{c.message_id}</span>
@@ -571,9 +604,30 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                 </div>
                 {isExp && (
                   <div className="api-call-body">
-                    {c.request && (
-                      <div className="api-call-block">
-                        <div className="api-call-block-title">{t('api.request')}</div>
+                    <div className="api-call-meta-grid">
+                      {c.finish_reason && (
+                        <div className="api-call-meta">
+                          <span className="api-call-meta-label">{t('api.finishReason')}</span>
+                          <span className="api-call-meta-value">{c.finish_reason}</span>
+                        </div>
+                      )}
+                      {c.response_model && (
+                        <div className="api-call-meta">
+                          <span className="api-call-meta-label">{t('api.responseModel')}</span>
+                          <span className="api-call-meta-value">{c.response_model}</span>
+                        </div>
+                      )}
+                      {usage.total > 0 && (
+                        <div className="api-call-meta">
+                          <span className="api-call-meta-label">{t('api.tokens')}</span>
+                          <span className="api-call-meta-value">
+                            {t('api.tokenDetail', { i: formatSizeNoB(usage.input), o: formatSizeNoB(usage.output), c: formatSizeNoB(usage.cache) })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="api-call-actions">
+                      {c.request && (
                         <button
                           className="api-call-view"
                           onClick={() => {
@@ -581,13 +635,10 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                             catch { onViewRaw(t('api.request'), c.request); }
                           }}
                         >
-                          {t('api.viewJson')}
+                          {t('api.request')} · {t('api.viewJson')}
                         </button>
-                      </div>
-                    )}
-                    {c.response && (
-                      <div className="api-call-block">
-                        <div className="api-call-block-title">{t('api.response')}</div>
+                      )}
+                      {c.response && (
                         <button
                           className="api-call-view"
                           onClick={() => {
@@ -595,10 +646,10 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                             catch { onViewRaw(t('api.response'), c.response); }
                           }}
                         >
-                          {t('api.viewJson')}
+                          {t('api.response')} · {t('api.viewJson')}
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -608,6 +659,34 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
       )}
     </div>
   );
+}
+
+/* ---- Helpers for the API panel ---- */
+
+/** Parse the JSON usage field into input/output/cache/total token counts. */
+function parseUsage(raw: string | null): { input: number; output: number; cache: number; total: number } {
+  const empty = { input: 0, output: 0, cache: 0, total: 0 };
+  if (!raw) return empty;
+  try {
+    const u = JSON.parse(raw);
+    return {
+      input: u.input_tokens ?? 0,
+      output: u.output_tokens ?? 0,
+      cache: u.cache_read_tokens ?? 0,
+      total: u.total_tokens ?? 0,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+/** Derive a coarse status for a call: ok / error / retried. */
+function callStatus(c: ApiCall): 'ok' | 'error' | 'retried' {
+  const fr = (c.finish_reason || '').toLowerCase();
+  if (fr === 'stop' || fr === 'length' || fr === 'tool_calls') return 'ok';
+  if (fr && fr !== 'stop') return 'error';
+  if (c.retry_count > 0) return 'retried';
+  return 'ok';
 }
 
 /* ---- Shared: parse tool calls ---- */
