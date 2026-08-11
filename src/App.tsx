@@ -581,6 +581,8 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
             const isExp = !!expanded[c.api_request_id];
             const usage = parseUsage(c.usage);
             const status = callStatus(c);
+            const fr = (c.finish_reason || '').toLowerCase();
+            const frClass = fr === 'stop' ? 'stop' : fr === 'length' ? 'length' : fr === 'tool_calls' ? 'tool_calls' : fr ? 'error' : 'none';
             return (
               <div key={c.api_request_id} className={`api-call ${isExp ? 'open' : ''}`}>
                 <div
@@ -589,12 +591,10 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                 >
                   <span className={`api-call-dot status-${status}`} title={status} />
                   <Chevron open={isExp} size={8} />
-                  <div className="api-call-main">
-                    <span className="api-call-model">{c.model || '—'}</span>
-                    {c.provider && <span className="api-call-provider">{c.provider}</span>}
-                  </div>
+                  {fr && <span className={`api-call-fr fr-${frClass}`}>{c.finish_reason}</span>}
                   <span className="api-call-usage">
                     <span className="usage-seg usage-in">{formatSizeNoB(usage.input)}</span>
+                    <span className="usage-arrow">→</span>
                     <span className="usage-seg usage-out">{formatSizeNoB(usage.output)}</span>
                   </span>
                   {c.retry_count > 0 && (
@@ -602,7 +602,7 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                   )}
                   <span className="api-call-time">{formatTime(c.started_at)}</span>
                   {c.message_id != null && (
-                    <span className="api-call-msg">→ msg #{c.message_id}</span>
+                    <span className="api-call-msg">msg #{c.message_id}</span>
                   )}
                 </div>
                 {isExp && (
