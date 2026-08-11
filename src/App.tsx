@@ -591,11 +591,15 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                 >
                   <span className={`api-call-dot status-${status}`} title={status} />
                   <Chevron open={isExp} size={8} />
-                  {fr && <span className={`api-call-fr fr-${frClass}`}>{c.finish_reason}</span>}
+                  {fr && fr !== 'tool_calls' && <span className={`api-call-fr fr-${frClass}`}>{c.finish_reason}</span>}
                   <span className="api-call-usage">
-                    <span className="usage-seg usage-in">{formatSizeNoB(usage.input)}</span>
+                    <span className="usage-seg usage-in" title={t('api.tooltipInput')}>
+                      <span className="usage-label">in</span> {formatSizeNoB(usage.input)}
+                    </span>
                     <span className="usage-arrow">→</span>
-                    <span className="usage-seg usage-out">{formatSizeNoB(usage.output)}</span>
+                    <span className="usage-seg usage-out" title={t('api.tooltipOutput')}>
+                      <span className="usage-label">out</span> {formatSizeNoB(usage.output)}
+                    </span>
                   </span>
                   {c.retry_count > 0 && (
                     <span className="api-call-retry">{t('api.retry', { n: c.retry_count })}</span>

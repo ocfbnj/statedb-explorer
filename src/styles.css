@@ -807,6 +807,14 @@ body {
   color: var(--text-faint);
   font-size: 10px;
 }
+.usage-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-right: 1px;
+}
 .api-call-usage {
   display: flex;
   align-items: center;
