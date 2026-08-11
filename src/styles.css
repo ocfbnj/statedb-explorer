@@ -561,7 +561,7 @@ body {
 }
 
 .conv-header {
-  padding: 16px 32px;
+  padding: 18px 32px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-surface-2);
   flex-shrink: 0;
@@ -574,18 +574,19 @@ body {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  line-height: 1.3;
 }
 
-/* Clickable, copyable session ID */
+/* Clickable, copyable session ID (pill style) */
 .conv-id {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 400;
   color: var(--text-muted);
   background: var(--bg-hover);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 8px;
+  border-radius: 999px;
+  padding: 2px 10px;
   cursor: pointer;
   user-select: text;
   transition: color .15s, border-color .15s, background .15s;
@@ -599,17 +600,22 @@ body {
 
 .conv-meta {
   display: flex;
-  gap: 20px;
-  margin-top: 8px;
-  font-size: 11.5px;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 11px;
   color: var(--text-muted);
   flex-wrap: wrap;
 }
 
 .conv-meta span {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .conv-meta strong {
@@ -917,21 +923,23 @@ body {
 /* ---- Turn groups ---- */
 .turn-group {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 10px;
   /* Cannot use overflow:hidden or it will break the turn-header sticky behavior */
   overflow: visible;
   background: var(--bg-base);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
 }
 
 .turn-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 9px 16px;
   cursor: pointer;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
   transition: background .15s;
   user-select: none;
   flex-wrap: wrap;
@@ -940,6 +948,8 @@ body {
   top: 0;
   z-index: 3;
   box-shadow: 0 1px 0 var(--border);
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
 }
 
 .turn-header:hover {
@@ -949,6 +959,7 @@ body {
 .turn-header.system,
 .turn-header.static {
   cursor: default;
+  backdrop-filter: none;
 }
 
 .turn-header.system:hover,
@@ -977,7 +988,7 @@ body {
 .turn-badge {
   font-size: 10.5px;
   padding: 2px 10px;
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--accent-dim);
   color: var(--accent);
   font-weight: 600;
@@ -993,7 +1004,7 @@ body {
 .turn-action {
   font-size: 11px;
   padding: 3px 12px;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--accent-dim);
   color: var(--accent);
   font-weight: 500;
@@ -1019,7 +1030,7 @@ body {
   padding: 8px 14px;
   margin-top: 2px;
   border: 1px dashed var(--border-light);
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   cursor: pointer;
   transition: background .15s, border-color .15s;
   user-select: none;
@@ -1062,7 +1073,7 @@ body {
 }
 
 .turn-body {
-  padding: 10px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1075,7 +1086,7 @@ body {
 .msg-mini {
   background: var(--bg-base);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   padding: 10px 14px;
   scroll-margin-top: 8px;
 }
@@ -1563,6 +1574,77 @@ body {
   padding: 20px 24px;
   overflow-y: auto;
   flex: 1;
+}
+
+/* ---- JSON viewer dialog (Apple-style) ---- */
+.json-dialog {
+  width: min(92vw, 980px);
+}
+.json-header {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.json-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.json-meta {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.json-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.json-header-actions .modal-close {
+  margin-left: 0;
+}
+
+/* iOS-style segmented control */
+.segmented {
+  display: flex;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.segmented-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.segmented-btn:hover { color: var(--text-primary); }
+.segmented-btn.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Copy button with success feedback */
+.json-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all .15s;
+}
+.json-copy.copied {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
 }
 
 .settings-group {

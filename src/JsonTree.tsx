@@ -227,6 +227,7 @@ export function JsonViewerModal({
   onClose: () => void;
 }) {
   const [viewMode, setViewMode] = useState<'tree' | 'raw'>('tree');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
@@ -241,21 +242,71 @@ export function JsonViewerModal({
     try { return safeStringify(data, 2); } catch { return String(data); }
   }, [data]);
 
+  // Statistics for the header: line count + estimated size
+  const stats = useMemo(() => {
+    const lines = jsonStr.split('\n').length;
+    const bytes = new Blob([jsonStr]).size;
+    return { lines, size: formatSizeCompact(bytes) };
+  }, [jsonStr]);
+
   const handleCopy = async () => {
     await navigator.clipboard.writeText(jsonStr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-dialog" style={{ maxWidth: '92vw', width: 900 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <span className="modal-title">{title}</span>
-          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
-            <button className="btn btn-sm" onClick={() => setViewMode(m => m === 'tree' ? 'raw' : 'tree')}>
-              切换视图
+      <div className="modal-dialog json-dialog" onClick={e => e.stopPropagation()}>
+        <div className="modal-header json-header">
+          <div className="json-header-main">
+            <span className="modal-title">{title}</span>
+            <span className="json-meta">{stats.lines} lines · {stats.size}</span>
+          </div>
+          <div className="json-header-actions">
+            {/* iOS-style segmented control for view switching */}
+            <div className="segmented">
+              <button
+                className={`segmented-btn ${viewMode === 'tree' ? 'active' : ''}`}
+                onClick={() => setViewMode('tree')}
+              >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                  <path d="M1.5 4h3v3h-3zM8 4h6.5v3H8zM1.5 9.5h3v3h-3zM8 9.5h6.5v3H8z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                </svg>
+                Tree
+              </button>
+              <button
+                className={`segmented-btn ${viewMode === 'raw' ? 'active' : ''}`}
+                onClick={() => setViewMode('raw')}
+              >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                  <path d="M4 3.5h8M4 8h8M4 12.5h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+                Raw
+              </button>
+            </div>
+            <button
+              className={`btn btn-sm json-copy ${copied ? 'copied' : ''}`}
+              onClick={handleCopy}
+            >
+              {copied ? (
+                <>
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 8.5l3.5 3.5L13 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Copied
+                </>
+              ) : (
+                <>
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                    <path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5v5A1.5 1.5 0 0 0 4 10h1.5" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                  Copy
+                </>
+              )}
             </button>
-            <button className="btn btn-sm btn-primary" onClick={handleCopy}>复制</button>
-            <button className="modal-close" onClick={onClose}>×</button>
+            <button className="modal-close" onClick={onClose} title="Close">×</button>
           </div>
         </div>
         <div className="modal-body">
@@ -270,7 +321,7 @@ export function JsonViewerModal({
                 fontFamily: 'var(--font-mono)',
                 fontSize: 12,
                 lineHeight: 1.6,
-                background: 'var(--bg-surface)',
+                background: 'var(--bg-base)',
                 padding: 12,
                 borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border)',
@@ -284,4 +335,11 @@ export function JsonViewerModal({
       </div>
     </div>
   );
+}
+
+/** Compact byte-size formatter for the JSON meta line (e.g. "12.4 KB"). */
+function formatSizeCompact(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
