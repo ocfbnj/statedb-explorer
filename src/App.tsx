@@ -35,6 +35,7 @@ export default function App() {
   const [loadPercent, setLoadPercent] = useState(0);
   const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [page, setPage] = useState<Page>('sessions');
 
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -105,6 +106,9 @@ export default function App() {
       setSessions(sess.items);
       setTotalSessions(sess.total);
       setSummary(summ);
+      // Bump the refresh key so the open conversation's API-call panel and
+      // system prompt reload along with the message list.
+      setRefreshKey(k => k + 1);
       // Reload messages for the currently selected session so the open
       // conversation reflects the latest data (not just the list/summary).
       if (selectedId) {
@@ -273,6 +277,7 @@ export default function App() {
               onViewRaw={viewRawJson}
               jumpToMsgId={jumpToMsgId}
               onJumpHandled={() => setJumpToMsgId(null)}
+              refreshKey={refreshKey}
             />
           )}
           {page === 'sessions' && !selectedSession && (
@@ -416,12 +421,13 @@ function StatCard({
 /* ================================================================
    Conversation View
    ================================================================ */
-function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
+function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHandled, refreshKey }: {
   session: Session;
   messages: Message[];
   onViewRaw: (t: string, d: any) => void;
   jumpToMsgId: number | null;
   onJumpHandled: () => void;
+  refreshKey: number;
 }) {
   const { t } = useI18n();
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -439,7 +445,8 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
     return () => { cancelled = true; };
   }, [session.id]);
 
-  // Load API request/response records for this session (from api_hook.db)
+  // Load API request/response records for this session (from api_hook.db).
+  // Reloads when the session changes or after a refresh (refreshKey bump).
   useEffect(() => {
     let cancelled = false;
     api.hookAvailable().then(av => {
@@ -449,7 +456,8 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
       if (!cancelled) { setApiCalls(res.rows); if (res.available) setHookAvailable(true); }
     }).catch(() => { });
     return () => { cancelled = true; };
-  }, [session.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id, refreshKey]);
 
   // Build the system-prompt message (index #0)
   const sysMsg: Message | null = systemPrompt
