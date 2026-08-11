@@ -162,6 +162,8 @@ const en: Record<string, string> = {
   'api.tooltipInput': 'Input tokens (prompt sent to the model)',
   'api.tooltipOutput': 'Output tokens (model response)',
   'api.tooltipCache': 'Cache-read tokens (prompt context served from cache)',
+  'api.tooltipHitRate': 'Cache hit rate: share of the prompt served from cache (higher = cheaper)',
+  'api.cacheHit': 'cache hit {pct}%',
 };
 
 const zh: Record<string, string> = {
@@ -282,6 +284,8 @@ const zh: Record<string, string> = {
   'api.tooltipInput': '输入 token（发送给模型的提示词）',
   'api.tooltipOutput': '输出 token（模型回复）',
   'api.tooltipCache': '缓存读取 token（提示词上下文命中缓存）',
+  'api.tooltipHitRate': '缓存命中率：提示词中由缓存提供的比例（越高越省钱）',
+  'api.cacheHit': '缓存命中 {pct}%',
 };
 
 /** Interpolate simple `{key}` placeholders. */

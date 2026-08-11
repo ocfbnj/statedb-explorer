@@ -732,6 +732,11 @@ body {
 .usage-seg.usage-out { color: var(--teal); }
 .usage-seg.usage-cache { color: var(--purple); }
 
+/* Cache hit rate: color-coded (green = good, yellow = mid, red = low) */
+.usage-hit.good { color: var(--teal); }
+.usage-hit.mid { color: var(--warning); }
+.usage-hit.low { color: var(--error); }
+
 /* Each call is a soft, rounded card with clear hierarchy */
 .api-call {
   border-bottom: 1px solid var(--border);

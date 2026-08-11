@@ -544,8 +544,11 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
     acc.input += u.input;
     acc.output += u.output;
     acc.cache += u.cache;
+    acc.prompt += u.prompt;
+    acc.total += u.total;
     return acc;
-  }, { input: 0, output: 0, cache: 0 });
+  }, { input: 0, output: 0, cache: 0, prompt: 0, total: 0 });
+  const totalHitRate = cacheHitRate(totalUsage);
 
   return (
     <div className={`api-panel ${open ? 'open' : ''}`}>
@@ -558,6 +561,14 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
             <span className="usage-seg usage-in" title={t('api.tooltipInput')}>↑ {formatSizeNoB(totalUsage.input)}</span>
             <span className="usage-seg usage-out" title={t('api.tooltipOutput')}>↓ {formatSizeNoB(totalUsage.output)}</span>
             <span className="usage-seg usage-cache" title={t('api.tooltipCache')}>◎ {formatSizeNoB(totalUsage.cache)}</span>
+            {totalHitRate != null && (
+              <span
+                className={`usage-seg usage-hit ${totalHitRate > 0.8 ? 'good' : totalHitRate > 0.5 ? 'mid' : 'low'}`}
+                title={t('api.tooltipHitRate')}
+              >
+                ◎ {Math.round(totalHitRate * 100)}%
+              </span>
+            )}
           </span>
         )}
       </div>
@@ -614,6 +625,12 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                           <span className="api-call-meta-label">{t('api.tokens')}</span>
                           <span className="api-call-meta-value">
                             {t('api.tokenDetail', { i: formatSizeNoB(usage.input), o: formatSizeNoB(usage.output), c: formatSizeNoB(usage.cache) })}
+                            {(() => {
+                              const hit = cacheHitRate(usage);
+                              return hit != null
+                                ? <span className={`usage-hit ${hit > 0.8 ? 'good' : hit > 0.5 ? 'mid' : 'low'}`} title={t('api.tooltipHitRate')}> · {t('api.cacheHit', { pct: Math.round(hit * 100) })}</span>
+                                : null;
+                            })()}
                           </span>
                         </div>
                       )}
@@ -655,21 +672,38 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
 
 /* ---- Helpers for the API panel ---- */
 
+interface UsageBreakdown {
+  input: number;   // tokens that missed the prompt cache (charged at normal rate)
+  output: number;  // completion tokens
+  cache: number;   // tokens served from the prompt cache (cheaper)
+  total: number;   // total_tokens as reported by the provider
+  prompt: number;  // input + cache (full prompt size)
+}
+
 /** Parse the JSON usage field into input/output/cache/total token counts. */
-function parseUsage(raw: string | null): { input: number; output: number; cache: number; total: number } {
-  const empty = { input: 0, output: 0, cache: 0, total: 0 };
+function parseUsage(raw: string | null): UsageBreakdown {
+  const empty: UsageBreakdown = { input: 0, output: 0, cache: 0, total: 0, prompt: 0 };
   if (!raw) return empty;
   try {
     const u = JSON.parse(raw);
+    const input = u.input_tokens ?? 0;
+    const cache = u.cache_read_tokens ?? 0;
     return {
-      input: u.input_tokens ?? 0,
+      input,
       output: u.output_tokens ?? 0,
-      cache: u.cache_read_tokens ?? 0,
+      cache,
       total: u.total_tokens ?? 0,
+      prompt: u.prompt_tokens ?? (input + cache),
     };
   } catch {
     return empty;
   }
+}
+
+/** Cache hit rate 0..1 (undefined when there is no cacheable prompt). */
+function cacheHitRate(u: UsageBreakdown): number | undefined {
+  if (u.prompt <= 0) return undefined;
+  return Math.min(1, u.cache / u.prompt);
 }
 
 /** Derive a coarse status for a call: ok / error / retried. */
