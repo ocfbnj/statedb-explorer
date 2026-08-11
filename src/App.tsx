@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   api, whenReady, onProgress, formatSize, formatSizeNoB, formatTime,
 } from './api';
-import type { Session, Message, Summary } from './api';
+import type { Session, Message, Summary, ApiCall } from './api';
 import { useI18n } from './I18nContext';
 import { JsonViewerModal } from './JsonTree';
 import './styles.css';
@@ -105,11 +105,16 @@ export default function App() {
       setSessions(sess.items);
       setTotalSessions(sess.total);
       setSummary(summ);
+      // Reload messages for the currently selected session so the open
+      // conversation reflects the latest data (not just the list/summary).
+      if (selectedId) {
+        api.listMessages(selectedId).then(setMessages).catch(() => setMessages([]));
+      }
     } catch (e: any) {
       setLoadError(e?.message || 'Refresh failed');
     }
     setRefreshing(false);
-  }, [search]);
+  }, [search, selectedId]);
 
   useEffect(() => { refreshSessions(); }, [refreshSessions]);
 
@@ -420,6 +425,9 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
 }) {
   const { t } = useI18n();
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+  const [apiCalls, setApiCalls] = useState<ApiCall[]>([]);
+  const [hookAvailable, setHookAvailable] = useState(false);
+  const [apiPanelOpen, setApiPanelOpen] = useState(false);
 
   // Load the system prompt for the current session
   useEffect(() => {
@@ -427,6 +435,18 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
     setSystemPrompt(null);
     api.getSystemPromptBySession(session.id).then(p => {
       if (!cancelled) setSystemPrompt(p);
+    }).catch(() => { });
+    return () => { cancelled = true; };
+  }, [session.id]);
+
+  // Load API request/response records for this session (from api_hook.db)
+  useEffect(() => {
+    let cancelled = false;
+    api.hookAvailable().then(av => {
+      if (!cancelled) setHookAvailable(av);
+    }).catch(() => { });
+    api.listApiCalls(session.id).then(res => {
+      if (!cancelled) { setApiCalls(res.rows); if (res.available) setHookAvailable(true); }
     }).catch(() => { });
     return () => { cancelled = true; };
   }, [session.id]);
@@ -475,9 +495,109 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
         </div>
       </div>
 
+      {/* API request/response panel (from api_hook.db) */}
+      <ApiCallsPanel
+        calls={apiCalls}
+        available={hookAvailable}
+        open={apiPanelOpen}
+        onToggle={() => setApiPanelOpen(o => !o)}
+        onViewRaw={onViewRaw}
+      />
+
       <div className="conv-body">
         <MessageList messages={allMessages} onViewRaw={onViewRaw} jumpToMsgId={jumpToMsgId} onJumpHandled={onJumpHandled} />
       </div>
+    </div>
+  );
+}
+
+/* ---- API request/response panel ---- */
+function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
+  calls: ApiCall[];
+  available: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onViewRaw: (t: string, d: any) => void;
+}) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  if (!available) {
+    return (
+      <div className="api-panel api-panel-empty">
+        <span className="api-panel-hint">{t('api.notAvailable')}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`api-panel ${open ? 'open' : ''}`}>
+      <div className="api-panel-header" onClick={onToggle}>
+        <span className="api-panel-caret">{open ? '▼' : '▶'}</span>
+        <span className="api-panel-title">🌐 {t('api.title')}</span>
+        <span className="api-panel-count">{t('api.count', { n: calls.length })}</span>
+      </div>
+      {open && (
+        <div className="api-panel-body">
+          {calls.length === 0 && (
+            <div className="api-panel-empty-text">{t('api.empty')}</div>
+          )}
+          {calls.map(c => {
+            const isExp = !!expanded[c.api_request_id];
+            return (
+              <div key={c.api_request_id} className="api-call">
+                <div
+                  className="api-call-header"
+                  onClick={() => setExpanded(e => ({ ...e, [c.api_request_id]: !e[c.api_request_id] }))}
+                >
+                  <span className="api-call-caret">{isExp ? '▼' : '▶'}</span>
+                  <span className="api-call-model">{c.model || '—'}</span>
+                  {c.retry_count > 0 && (
+                    <span className="api-call-retry">retry×{c.retry_count}</span>
+                  )}
+                  <span className="api-call-finish">{c.finish_reason || ''}</span>
+                  <span className="api-call-time">{formatTime(c.started_at)}</span>
+                  {c.message_id != null && (
+                    <span className="api-call-msg">→ msg #{c.message_id}</span>
+                  )}
+                </div>
+                {isExp && (
+                  <div className="api-call-body">
+                    {c.request && (
+                      <div className="api-call-block">
+                        <div className="api-call-block-title">{t('api.request')}</div>
+                        <button
+                          className="api-call-view"
+                          onClick={() => {
+                            try { onViewRaw(t('api.request'), JSON.parse(c.request!)); }
+                            catch { onViewRaw(t('api.request'), c.request); }
+                          }}
+                        >
+                          {t('api.viewJson')}
+                        </button>
+                      </div>
+                    )}
+                    {c.response && (
+                      <div className="api-call-block">
+                        <div className="api-call-block-title">{t('api.response')}</div>
+                        <button
+                          className="api-call-view"
+                          onClick={() => {
+                            try { onViewRaw(t('api.response'), JSON.parse(c.response!)); }
+                            catch { onViewRaw(t('api.response'), c.response); }
+                          }}
+                        >
+                          {t('api.viewJson')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
