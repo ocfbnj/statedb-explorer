@@ -226,7 +226,7 @@ export function JsonViewerModal({
   data: any;
   onClose: () => void;
 }) {
-  const [viewMode, setViewMode] = useState<'tree' | 'raw'>('tree');
+  const [viewMode, setViewMode] = useState<'summary' | 'tree' | 'raw'>('summary');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -249,6 +249,8 @@ export function JsonViewerModal({
     return { lines, size: formatSizeCompact(bytes) };
   }, [jsonStr]);
 
+  const summary = useMemo(() => summarizeJson(data), [data]);
+
   const handleCopy = async () => {
     await navigator.clipboard.writeText(jsonStr);
     setCopied(true);
@@ -266,6 +268,18 @@ export function JsonViewerModal({
           <div className="json-header-actions">
             {/* iOS-style segmented control for view switching */}
             <div className="segmented">
+              <button
+                className={`segmented-btn ${viewMode === 'summary' ? 'active' : ''}`}
+                onClick={() => setViewMode('summary')}
+              >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                  <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+                  <rect x="9" y="1.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+                  <rect x="1.5" y="9" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M9 11.75h5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+                Summary
+              </button>
               <button
                 className={`segmented-btn ${viewMode === 'tree' ? 'active' : ''}`}
                 onClick={() => setViewMode('tree')}
@@ -310,9 +324,9 @@ export function JsonViewerModal({
           </div>
         </div>
         <div className="modal-body">
-          {viewMode === 'tree' ? (
-            <JsonTree data={data} />
-          ) : (
+          {viewMode === 'summary' && <JsonSummary summary={summary} />}
+          {viewMode === 'tree' && <JsonTree data={data} />}
+          {viewMode === 'raw' && (
             <pre
               style={{
                 margin: 0,
@@ -342,4 +356,190 @@ function formatSizeCompact(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/* ================================================================
+   Smart JSON summary
+   Renders a human-readable digest of a request/response payload so
+   huge payloads (e.g. a 1 MB request with 1000+ messages) can be
+   understood at a glance before diving into the raw JSON.
+   ================================================================ */
+
+interface SummarySection {
+  title: string;
+  icon: string;
+  rows: { label: string; value: string; tone?: 'accent' | 'teal' | 'purple' | 'warning' | 'error' }[];
+  note?: string;
+}
+
+interface JsonSummaryData {
+  kind: 'request' | 'response' | 'generic';
+  sections: SummarySection[];
+}
+
+/** Extract the inner payload from a wrapped { method, body } request. */
+function unwrapPayload(data: any): any {
+  if (data && typeof data === 'object' && 'body' in data) return data.body;
+  return data;
+}
+
+/** Count message roles in a messages array. */
+function countRoles(messages: any[]): { role: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const m of messages) {
+    if (m && typeof m === 'object') {
+      const role = String(m.role ?? '?');
+      counts.set(role, (counts.get(role) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([role, count]) => ({ role, count }));
+}
+
+/** Summarize an API request or response payload. */
+export function summarizeJson(data: any): JsonSummaryData {
+  // Response shape: { model, finish_reason, assistant_message, usage }
+  if (data && typeof data === 'object' && 'assistant_message' in data) {
+    const d = data as any;
+    const msg = d.assistant_message || {};
+    const usage = d.usage || {};
+    const sections: SummarySection[] = [
+      {
+        title: 'Response',
+        icon: '↩',
+        rows: [
+          { label: 'Model', value: d.model ?? '—' },
+          { label: 'Finish reason', value: d.finish_reason ?? '—' },
+        ],
+      },
+      {
+        title: 'Assistant reply',
+        icon: '💬',
+        rows: [
+          {
+            label: 'Content',
+            value: String(msg.content ?? '(empty)').slice(0, 400) + (String(msg.content ?? '').length > 400 ? '…' : ''),
+            tone: 'teal',
+          },
+        ],
+      },
+      {
+        title: 'Token usage',
+        icon: '◔',
+        rows: [
+          { label: 'Input', value: `${fmtNum(usage.input_tokens)} (cache read ${fmtNum(usage.cache_read_tokens)})`, tone: 'accent' },
+          { label: 'Output', value: fmtNum(usage.output_tokens), tone: 'teal' },
+          { label: 'Total', value: fmtNum(usage.total_tokens) },
+        ],
+      },
+    ];
+    return { kind: 'response', sections };
+  }
+
+  // Request shape: { method, body: { model, messages, tools, ... } } or body directly
+  const method = data && typeof data === 'object' && 'method' in data ? (data as any).method : undefined;
+  const body = unwrapPayload(data);
+  if (body && typeof body === 'object') {
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const tools = Array.isArray(body.tools) ? body.tools : [];
+    const roleCounts = countRoles(messages);
+    const sections: SummarySection[] = [
+      {
+        title: 'Request',
+        icon: '→',
+        rows: [
+          ...(method ? [{ label: 'Method', value: String(method) }] : []),
+          { label: 'Model', value: String(body.model ?? '—') },
+          ...(body.reasoning_effort ? [{ label: 'Reasoning', value: String(body.reasoning_effort) }] : []),
+        ],
+      },
+    ];
+    if (messages.length > 0) {
+      sections.push({
+        title: 'Messages',
+        icon: '💬',
+        rows: roleCounts.map(r => ({
+          label: r.role,
+          value: `${r.count} msgs`,
+          tone: r.role === 'user' ? 'accent' : r.role === 'tool' ? 'purple' : undefined,
+        })),
+        note: `${fmtNum(messages.length)} messages · ${fmtBytes(estimateMessagesBytes(messages))}`,
+      });
+    }
+    if (tools.length > 0) {
+      sections.push({
+        title: 'Tools',
+        icon: '🔧',
+        rows: tools.map((t: any) => ({
+          label: (t.function ?? t).name ?? '?',
+          value: '',
+        })).slice(0, 12),
+        note: tools.length > 12 ? `+ ${tools.length - 12} more` : undefined,
+      });
+    }
+    if (sections.length > 1 || messages.length > 0) return { kind: 'request', sections };
+  }
+
+  // Generic fallback: top-level keys with value previews
+  const sections: SummarySection[] = [
+    {
+      title: 'Overview',
+      icon: '▤',
+      rows: Object.entries(data ?? {}).slice(0, 15).map(([k, v]) => ({
+        label: k,
+        value: typeof v === 'string' ? v.slice(0, 80) : Array.isArray(v) ? `[${v.length} items]` : JSON.stringify(v).slice(0, 80),
+      })),
+    },
+  ];
+  return { kind: 'generic', sections };
+}
+
+function estimateMessagesBytes(messages: any[]): number {
+  let total = 0;
+  for (const m of messages) {
+    try { total += JSON.stringify(m).length; } catch { /* */ }
+  }
+  return total;
+}
+
+function fmtNum(n: any): string {
+  const v = Number(n ?? 0);
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return String(v);
+}
+
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function JsonSummary({ summary }: { summary: JsonSummaryData }) {
+  // Only auto-expand the tools section when it fits comfortably
+  return (
+    <div className="json-summary">
+      {summary.sections.map((sec, i) => (
+        <div key={i} className="js-section">
+          <div className="js-section-head">
+            <span className="js-section-icon">{sec.icon}</span>
+            <span className="js-section-title">{sec.title}</span>
+            {sec.note && <span className="js-section-note">{sec.note}</span>}
+          </div>
+          <div className="js-rows">
+            {sec.rows.map((row, j) => (
+              <div key={j} className="js-row">
+                <span className="js-label">{row.label}</span>
+                <span className={`js-value ${row.tone ? `tone-${row.tone}` : ''}`}>
+                  {row.value || '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="js-hint">Showing a summary — switch to Tree or Raw for the full payload.</div>
+    </div>
+  );
 }
