@@ -145,6 +145,15 @@ const en: Record<string, string> = {
 
   // Message list state
   'msglist.loading': 'Loading…',
+
+  // API request/response panel
+  'api.title': 'API Requests',
+  'api.count': '{n} calls',
+  'api.empty': 'No API request records for this session',
+  'api.notAvailable': 'api_hook.db not found next to state.db — enable the api_hook plugin to record API requests',
+  'api.request': 'Request',
+  'api.response': 'Response',
+  'api.viewJson': 'View JSON',
 };
 
 const zh: Record<string, string> = {
@@ -249,6 +258,14 @@ const zh: Record<string, string> = {
   'load.pickPrompt': '选择 state.db 以开始使用',
 
   'msglist.loading': '加载中…',
+
+  'api.title': 'API 请求记录',
+  'api.count': '{n} 次调用',
+  'api.empty': '该会话暂无 API 请求记录',
+  'api.notAvailable': '未在 state.db 同目录找到 api_hook.db — 启用 api_hook 插件以记录 API 请求',
+  'api.request': '请求',
+  'api.response': '响应',
+  'api.viewJson': '查看 JSON',
 };
 
 /** Interpolate simple `{key}` placeholders. */

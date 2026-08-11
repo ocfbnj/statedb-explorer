@@ -47,6 +47,26 @@ export interface Summary {
   db_size: number;
 }
 
+/** One row from api_hook.db — an LLM API request/response pair. */
+export interface ApiCall {
+  api_request_id: string;
+  session_id: string;
+  api_call_count: number;
+  retry_count: number;
+  model: string;
+  provider: string;
+  api_mode: string;
+  started_at: number;
+  ended_at: number | null;
+  finish_reason: string | null;
+  response_model: string | null;
+  request: string | null;
+  response: string | null;
+  usage: string | null;
+  /** state.db message id of the assistant message this call produced (may be null) */
+  message_id: number | null;
+}
+
 export interface SystemPrompt {
   hash: string;
   content: string;
@@ -64,6 +84,8 @@ interface StateDBBridge {
   exec(sql: string): Promise<{ ok: boolean; columns?: string[]; rows?: any[]; error?: string }>;
   reload(): Promise<{ ok: boolean; error?: string; path?: string; size?: number; name?: string }>;
   meta(): Promise<{ ok: boolean; path: string; size: number; name: string }>;
+  listApiCalls(sessionId: string): Promise<{ ok: boolean; rows?: ApiCall[]; available?: boolean; error?: string }>;
+  hookAvailable(): Promise<{ ok: boolean; available?: boolean }>;
 }
 
 declare global {
@@ -303,6 +325,21 @@ export const api = {
 
   executeSql: async (sql: string) => {
     return execSql(sql);
+  },
+
+  /** List API request/response records for a session (from api_hook.db, optional) */
+  listApiCalls: async (sessionId: string): Promise<{ rows: ApiCall[]; available: boolean }> => {
+    await ready;
+    const res = await bridge().listApiCalls(sessionId);
+    if (!res.ok) throw new Error(res.error || 'Query failed');
+    return { rows: (res.rows || []) as ApiCall[], available: !!res.available };
+  },
+
+  /** Whether api_hook.db was found next to state.db */
+  hookAvailable: async (): Promise<boolean> => {
+    await ready;
+    const res = await bridge().hookAvailable();
+    return !!res.available;
   },
 
   /** Reload state.db from disk, returning updated metadata */

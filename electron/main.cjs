@@ -33,6 +33,7 @@ function findHermesDir() {
 let db = null;         // Current database instance (DatabaseSync)
 let dbPath = '';       // Path of the currently loaded db
 let dbSize = 0;
+let apiHookDb = null;  // api_hook.db instance (optional, same Hermes home)
 
 // Query helper (node:sqlite Statements need no explicit close)
 function queryRows(sql, params = []) {
@@ -67,6 +68,19 @@ function loadDb(filePath) {
   db = new DatabaseSync(filePath, { readOnly: true });
   dbPath = filePath;
   dbSize = fs.statSync(filePath).size;
+  // Open api_hook.db (same directory, optional) read-only for API request/response lookup
+  try {
+    const hookPath = path.join(path.dirname(filePath), 'api_hook.db');
+    if (fs.existsSync(hookPath)) {
+      if (apiHookDb) { try { apiHookDb.close(); } catch { /* */ } }
+      apiHookDb = new DatabaseSync(hookPath, { readOnly: true });
+      // Attach state.db (the main db file) so the correlation sub-query can
+      // match api_calls against messages by session + timestamp window.
+      try {
+        apiHookDb.exec(`ATTACH DATABASE '${filePath.replace(/'/g, "''")}' AS state`);
+      } catch { /* correlation still works without the message join */ }
+    }
+  } catch { apiHookDb = null; }
   return { path: filePath, size: dbSize, name: path.basename(filePath) };
 }
 
@@ -133,6 +147,48 @@ function registerIpc() {
       return { ok: false, error: e.message || 'Reload failed' };
     }
   });
+
+  // List API request/response records for a session from api_hook.db.
+  // Each api_call row is joined to the assistant message whose timestamp falls
+  // inside the call's [started_at, ended_at] window (messages are written right
+  // after the API response arrives). Returns rows with the message id attached.
+  ipcMain.handle('api:listApiCalls', (_e, sessionId) => {
+    if (!apiHookDb) return { ok: true, rows: [], available: false };
+    try {
+      const stmt = apiHookDb.prepare(`
+        WITH candidates AS (
+          SELECT c.api_request_id, c.session_id, c.started_at, c.ended_at,
+                 m.id AS message_id,
+                 ABS(m.timestamp - COALESCE(c.ended_at, c.started_at)) AS dist
+          FROM api_calls c
+          LEFT JOIN state.messages m
+            ON m.session_id = c.session_id AND m.role = 'assistant'
+           AND m.timestamp >= c.started_at
+           AND m.timestamp <= COALESCE(c.ended_at, c.started_at) + 2
+          WHERE c.session_id = ?
+        ),
+        ranked AS (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY api_request_id ORDER BY dist) AS rn
+          FROM candidates
+        )
+        SELECT c.api_request_id, c.session_id, c.api_call_count, c.retry_count,
+               c.model, c.provider, c.api_mode, c.started_at, c.ended_at,
+               c.finish_reason, c.response_model, c.request, c.response, c.usage,
+               r.message_id
+        FROM api_calls c
+        LEFT JOIN ranked r ON r.api_request_id = c.api_request_id AND r.rn = 1
+        WHERE c.session_id = ?
+        ORDER BY c.started_at ASC
+      `);
+      const rows = stmt.all(sessionId, sessionId);
+      return { ok: true, rows, available: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  // Whether api_hook.db was found alongside state.db
+  ipcMain.handle('api:hookAvailable', () => ({ ok: true, available: !!apiHookDb }));
 }
 
 // ============================================================

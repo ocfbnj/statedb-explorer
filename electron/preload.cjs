@@ -13,4 +13,6 @@ contextBridge.exposeInMainWorld('stateDB', {
   exec: (sql) => ipcRenderer.invoke('db:exec', sql),
   reload: () => ipcRenderer.invoke('db:reload'),
   meta: () => ipcRenderer.invoke('db:meta'),
+  listApiCalls: (sessionId) => ipcRenderer.invoke('api:listApiCalls', sessionId),
+  hookAvailable: () => ipcRenderer.invoke('api:hookAvailable'),
 });
