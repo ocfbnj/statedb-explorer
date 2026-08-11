@@ -397,8 +397,26 @@ function countRoles(messages: any[]): { role: string; count: number }[] {
     .map(([role, count]) => ({ role, count }));
 }
 
-/** Summarize an API request or response payload. */
+/** Summarize an API request or response payload. Never throws. */
 export function summarizeJson(data: any): JsonSummaryData {
+  try {
+    return summarizeJsonInner(data);
+  } catch {
+    // Extreme fallback: never let the summary crash the viewer
+    return {
+      kind: 'generic',
+      sections: [
+        {
+          title: 'Overview',
+          icon: '▤',
+          rows: [{ label: 'Payload', value: '(unable to summarize)' }],
+        },
+      ],
+    };
+  }
+}
+
+function summarizeJsonInner(data: any): JsonSummaryData {
   // Response shape: { model, finish_reason, assistant_message, usage }
   if (data && typeof data === 'object' && 'assistant_message' in data) {
     const d = data as any;
@@ -481,18 +499,35 @@ export function summarizeJson(data: any): JsonSummaryData {
     if (sections.length > 1 || messages.length > 0) return { kind: 'request', sections };
   }
 
-  // Generic fallback: top-level keys with value previews
+  // Generic fallback: top-level keys with value previews (safe for any value)
   const sections: SummarySection[] = [
     {
       title: 'Overview',
       icon: '▤',
       rows: Object.entries(data ?? {}).slice(0, 15).map(([k, v]) => ({
         label: k,
-        value: typeof v === 'string' ? v.slice(0, 80) : Array.isArray(v) ? `[${v.length} items]` : JSON.stringify(v).slice(0, 80),
+        value: safePreview(v),
       })),
     },
   ];
   return { kind: 'generic', sections };
+}
+
+/** Render any value as a short, safe preview string (never throws). */
+function safePreview(v: any): string {
+  try {
+    if (typeof v === 'string') return v.slice(0, 80);
+    if (Array.isArray(v)) return `[${v.length} items]`;
+    if (v === null) return 'null';
+    if (v === undefined) return 'undefined';
+    if (typeof v === 'object') {
+      // Avoid JSON.stringify on objects that may contain circular refs
+      return `{${Object.keys(v).slice(0, 5).join(', ')}${Object.keys(v).length > 5 ? ', …' : ''}}`;
+    }
+    return String(v);
+  } catch {
+    return '(unprintable)';
+  }
 }
 
 function estimateMessagesBytes(messages: any[]): number {

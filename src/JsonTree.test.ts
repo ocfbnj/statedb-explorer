@@ -108,4 +108,14 @@ describe('summarizeJson — generic fallback', () => {
     expect(summarizeJson(null).sections[0].title).toBe('Overview');
     expect(summarizeJson('plain string').kind).toBe('generic');
   });
+
+  it('never throws on circular references or exotic values', () => {
+    // Circular reference would make JSON.stringify throw
+    const circular: any = { name: 'loop' };
+    circular.self = circular;
+    expect(() => summarizeJson({ a: circular, b: () => 1, c: undefined })).not.toThrow();
+    const s = summarizeJson({ a: circular });
+    expect(s.kind).toBe('generic');
+    expect(s.sections[0].rows[0].value).toContain('{');
+  });
 });
