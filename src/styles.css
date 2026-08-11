@@ -381,12 +381,15 @@ body {
 
 .page-header {
   margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 
 .page-title {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
-  letter-spacing: -.3px;
+  letter-spacing: -.5px;
+  line-height: 1.2;
 }
 
 .page-subtitle {
@@ -406,14 +409,15 @@ body {
 .stat-card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  transition: border-color .15s, transform .15s;
+  border-radius: 14px;
+  padding: 20px;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
 }
 
 .stat-card:hover {
   border-color: var(--border-light);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
 }
 
 .stat-card .stat-icon {
@@ -459,8 +463,8 @@ body {
 .dash-card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
+  border-radius: 14px;
+  padding: 20px;
 }
 
 .dash-card-title {
@@ -1207,9 +1211,10 @@ body {
 .sql-editor-wrap {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   margin-bottom: 16px;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
 }
 
 .sql-editor-toolbar {
@@ -1349,9 +1354,10 @@ body {
 .table-list {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   overflow-y: auto;
   max-height: calc(100vh - 200px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
 }
 
 .table-list-item {
