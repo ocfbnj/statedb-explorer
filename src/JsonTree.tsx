@@ -184,7 +184,11 @@ export function JsonTree({ data, initialExpanded = true, maxExpandDepth = 2 }: J
                 const line = (e.target as HTMLElement).closest('.jt-line');
                 if (line) line.classList.toggle('jt-open');
               }}
-            >▶</span>
+            >
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
             {indent}{keyLabel}
             <span className="jt-bracket">{openB}</span>
             <span className="jt-count">{countLabel}</span>

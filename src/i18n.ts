@@ -159,6 +159,9 @@ const en: Record<string, string> = {
   'api.responseModel': 'Response model',
   'api.tokens': 'Tokens',
   'api.tokenDetail': '{i} in · {o} out · {c} cached',
+  'api.tooltipInput': 'Input tokens (prompt sent to the model)',
+  'api.tooltipOutput': 'Output tokens (model response)',
+  'api.tooltipCache': 'Cache-read tokens (prompt context served from cache)',
 };
 
 const zh: Record<string, string> = {
@@ -276,6 +279,9 @@ const zh: Record<string, string> = {
   'api.responseModel': '响应模型',
   'api.tokens': 'Token',
   'api.tokenDetail': '{i} 输入 · {o} 输出 · {c} 缓存',
+  'api.tooltipInput': '输入 token（发送给模型的提示词）',
+  'api.tooltipOutput': '输出 token（模型回复）',
+  'api.tooltipCache': '缓存读取 token（提示词上下文命中缓存）',
 };
 
 /** Interpolate simple `{key}` placeholders. */

@@ -726,6 +726,7 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   white-space: nowrap;
+  cursor: help;
 }
 .usage-seg.usage-in { color: var(--accent); }
 .usage-seg.usage-out { color: var(--teal); }
@@ -976,6 +977,22 @@ body {
   color: var(--text-muted);
   width: 12px;
   flex-shrink: 0;
+}
+
+/* Unified Apple-style chevron (expand/collapse indicator) */
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform .18s ease;
+}
+.chevron svg {
+  display: block;
+}
+.chevron.open {
+  transform: rotate(180deg);
 }
 
 .turn-title {
@@ -1804,16 +1821,18 @@ body {
 }
 
 .jt-toggle {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 14px;
-  text-align: center;
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 9px;
+  transition: transform .18s ease;
+  vertical-align: middle;
 }
 
 .jt-line.jt-open>.jt-content>.jt-toggle {
-  transform: rotate(90deg);
+  transform: rotate(180deg);
 }
 
 .jt-key { color: var(--accent); }

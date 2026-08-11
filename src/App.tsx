@@ -550,18 +550,14 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
   return (
     <div className={`api-panel ${open ? 'open' : ''}`}>
       <div className="api-panel-header" onClick={onToggle}>
-        <span className={`api-panel-caret ${open ? 'open' : ''}`}>
-          <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-            <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
+        <Chevron open={open} />
         <span className="api-panel-title">🌐 {t('api.title')}</span>
         <span className="api-panel-count">{t('api.count', { n: calls.length })}</span>
         {calls.length > 0 && (
           <span className="api-panel-usage">
-            <span className="usage-seg usage-in">▲ {formatSizeNoB(totalUsage.input)}</span>
-            <span className="usage-seg usage-out">▼ {formatSizeNoB(totalUsage.output)}</span>
-            <span className="usage-seg usage-cache">◎ {formatSizeNoB(totalUsage.cache)}</span>
+            <span className="usage-seg usage-in" title={t('api.tooltipInput')}>↑ {formatSizeNoB(totalUsage.input)}</span>
+            <span className="usage-seg usage-out" title={t('api.tooltipOutput')}>↓ {formatSizeNoB(totalUsage.output)}</span>
+            <span className="usage-seg usage-cache" title={t('api.tooltipCache')}>◎ {formatSizeNoB(totalUsage.cache)}</span>
           </span>
         )}
       </div>
@@ -581,11 +577,7 @@ function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
                   onClick={() => setExpanded(e => ({ ...e, [c.api_request_id]: !e[c.api_request_id] }))}
                 >
                   <span className={`api-call-dot status-${status}`} title={status} />
-                  <span className="api-call-caret">
-                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                      <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
+                  <Chevron open={isExp} size={8} />
                   <div className="api-call-main">
                     <span className="api-call-model">{c.model || '—'}</span>
                     {c.provider && <span className="api-call-provider">{c.provider}</span>}
@@ -687,6 +679,17 @@ function callStatus(c: ApiCall): 'ok' | 'error' | 'retried' {
   if (fr && fr !== 'stop') return 'error';
   if (c.retry_count > 0) return 'retried';
   return 'ok';
+}
+
+/* ---- Chevron (consistent Apple-style expand/collapse indicator) ---- */
+function Chevron({ open, size = 9 }: { open?: boolean; size?: number }) {
+  return (
+    <span className={`chevron ${open ? 'open' : ''}`} style={{ width: size }}>
+      <svg width={size} height={size} viewBox="0 0 10 10" fill="none">
+        <path d="M1 2.5 L5 7.5 L9 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
 }
 
 /* ---- Shared: parse tool calls ---- */
@@ -1015,7 +1018,7 @@ function TurnHeader({ isOpen, lead, toolCount, processCount, onToggle, canToggle
   }
   return (
     <div className="turn-header" onClick={onToggle}>
-      <span className="turn-chevron">{isOpen ? '▼' : '▶'}</span>
+      <Chevron open={isOpen} />
       <span className="turn-title">
         {lead.content ? (lead.content.slice(0, 60) + (lead.content.length > 60 ? '…' : '')) : t('turn.emptyTitle')}
       </span>
