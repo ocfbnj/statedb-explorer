@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   api, whenReady, onProgress, formatSize, formatSizeNoB, formatTime,
 } from './api';
@@ -7,7 +7,7 @@ import { useI18n } from './I18nContext';
 import { JsonViewerModal } from './JsonTree';
 import './styles.css';
 
-type Page = 'dashboard' | 'sessions' | 'schema' | 'sql';
+type Page = 'dashboard' | 'sessions' | 'schema' | 'sql' | 'api';
 
 /* ---- Refresh icon (SVG), in a modern dark theme style ---- */
 function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
@@ -37,6 +37,9 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [page, setPage] = useState<Page>('sessions');
+  // Main-content tab when a session's thread is open: 'thread' | 'api'
+  const [contentTab, setContentTab] = useState<'thread' | 'api'>('thread');
+  const [apiRecordsCount, setApiRecordsCount] = useState<number | null>(null);
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [totalSessions, setTotalSessions] = useState(0);
@@ -44,6 +47,8 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [search, setSearch] = useState('');
   const [jumpToMsgId, setJumpToMsgId] = useState<number | null>(null);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [jsonModal, setJsonModal] = useState<{ title: string; data: any } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -99,6 +104,7 @@ export default function App() {
         return;
       }
       setDbMeta(prev => ({ ...prev, size: res.size || 0, path: res.path || prev.path, name: res.name || prev.name }));
+      setRefreshKey(k => k + 1);
       const [sess, summ] = await Promise.all([
         api.listSessions({ limit: 100, q: search }),
         api.summary(),
@@ -106,9 +112,6 @@ export default function App() {
       setSessions(sess.items);
       setTotalSessions(sess.total);
       setSummary(summ);
-      // Bump the refresh key so the open conversation's API-call panel and
-      // system prompt reload along with the message list.
-      setRefreshKey(k => k + 1);
       // Reload messages for the currently selected session so the open
       // conversation reflects the latest data (not just the list/summary).
       if (selectedId) {
@@ -124,8 +127,24 @@ export default function App() {
 
   // Load messages for the selected session
   useEffect(() => {
-    if (!selectedId) { setMessages([]); return; }
-    api.listMessages(selectedId).then(setMessages).catch(() => setMessages([]));
+    if (!selectedId) { setMessages([]); setSystemPrompt(null); setLoadingMsgs(false); return; }
+    setLoadingMsgs(true);
+    let cancelled = false;
+    Promise.all([
+      api.listMessages(selectedId),
+      api.getSystemPromptBySession(selectedId).catch(() => null),
+    ]).then(([msgs, prompt]) => {
+      if (cancelled) return;
+      setMessages(msgs);
+      setSystemPrompt(prompt);
+      setLoadingMsgs(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setMessages([]);
+      setSystemPrompt(null);
+      setLoadingMsgs(false);
+    });
+    return () => { cancelled = true; };
   }, [selectedId]);
 
   const selectedSession = sessions.find(s => s.id === selectedId);
@@ -201,7 +220,16 @@ export default function App() {
             placeholder={t('app.search')}
           />
         </div>
-        <div className="header-actions no-drag" />
+        <div className="header-actions no-drag">
+          <button
+            className="panel-refresh"
+            onClick={handleRefresh}
+            title={t('app.refresh')}
+            disabled={refreshing}
+          >
+            <RefreshIcon spinning={refreshing} />
+          </button>
+        </div>
       </header>
 
       <div className="main">
@@ -236,24 +264,30 @@ export default function App() {
               <div className="panel-subtitle">{t('sessions.count', { count: totalSessions })}</div>
             </div>
             <div className="session-list">
-              {sessions.map(s => (
-                <div
-                  key={s.id}
-                  className={`session-item ${selectedId === s.id ? 'active' : ''}`}
-                  onClick={() => setSelectedId(s.id)}
-                >
-                  <div className="session-title">{s.title || t('turn.emptyTitle')}</div>
-                  <div className="session-meta">
-                    <span>{t('sessions.messages', { n: s.message_count })}</span>
-                    <span className="dot" />
-                    <span>{t('sessions.calls', { n: s.api_call_count ?? 0 })}</span>
-                    <span className="dot" />
-                    <span>{formatSizeNoB(s.input_tokens + s.output_tokens)}</span>
-                    <span className="dot" />
-                    <span>{formatTime(s.last_activity_at)}</span>
+              {(() => {
+                const maxTok = Math.max(...sessions.map(s => s.input_tokens + s.output_tokens), 1);
+                return sessions.map(s => (
+                  <div
+                    key={s.id}
+                    className={`session-item ${selectedId === s.id ? 'active' : ''}`}
+                    onClick={() => setSelectedId(s.id)}
+                  >
+                    <div className="session-title">{s.title || t('turn.emptyTitle')}</div>
+                    <div className="session-meta">
+                      <span>{t('sessions.messages', { n: s.message_count })}</span>
+                      <span className="dot" />
+                      <span>{t('sessions.calls', { n: s.api_call_count ?? 0 })}</span>
+                      <span>{formatTime(s.last_activity_at)}</span>
+                    </div>
+                    <div className="session-token-bar">
+                      <div className="session-token-track">
+                        <div className="session-token-fill" style={{ width: `${((s.input_tokens + s.output_tokens) / maxTok * 100).toFixed(1)}%` }} />
+                      </div>
+                      <span className="session-token-val">{formatSizeNoB(s.input_tokens + s.output_tokens)}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
               {sessions.length === 0 && (
                 <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-faint)' }}>{t('sessions.empty')}</div>
               )}
@@ -267,18 +301,42 @@ export default function App() {
             <Dashboard
               summary={summary}
               sessions={sessions.slice(0, 8)}
-              onSelectSession={(id) => { setSelectedId(id); setPage('sessions'); }}
+              onSelectSession={(id) => { setSelectedId(id); setPage('sessions'); setContentTab('thread'); }}
             />
           )}
           {page === 'sessions' && selectedSession && (
-            <ConversationView
-              session={selectedSession}
-              messages={messages}
-              onViewRaw={viewRawJson}
-              jumpToMsgId={jumpToMsgId}
-              onJumpHandled={() => setJumpToMsgId(null)}
-              refreshKey={refreshKey}
-            />
+            <>
+              {/* Content tabs: thread / API records */}
+              <div className="content-tabs">
+                <button
+                  className={`content-tab ${contentTab === 'thread' ? 'active' : ''}`}
+                  onClick={() => setContentTab('thread')}
+                >💬 {t('conv.thread')}<span className="tab-count">{selectedSession.message_count}</span></button>
+                <button
+                  className={`content-tab ${contentTab === 'api' ? 'active' : ''}`}
+                  onClick={() => setContentTab('api')}
+                >📡 {t('nav.apiRecords')}<span className="tab-count">{apiRecordsCount ?? selectedSession.api_call_count ?? 0}</span></button>
+              </div>
+              <div style={{ display: contentTab === 'thread' ? 'block' : 'none' }}>
+                <ConversationView
+                  session={selectedSession}
+                  messages={messages}
+                  loading={loadingMsgs}
+                  systemPrompt={systemPrompt}
+                  onViewRaw={viewRawJson}
+                  jumpToMsgId={jumpToMsgId}
+                  onJumpHandled={() => setJumpToMsgId(null)}
+                />
+              </div>
+              <div style={{ display: contentTab === 'api' ? 'block' : 'none' }}>
+                <ApiRecordsPage
+                  session={selectedSession}
+                  refreshKey={refreshKey}
+                  onCountChange={setApiRecordsCount}
+                  onViewRaw={viewRawJson}
+                />
+              </div>
+            </>
           )}
           {page === 'sessions' && !selectedSession && (
             <EmptyState icon="💬" title={t('conv.noSession')} desc={t('conv.noMessages')} />
@@ -293,16 +351,6 @@ export default function App() {
         <span>{t('status.db', { size: summary ? formatSize(summary.db_size) : '—' })}</span>
         <span>{t('status.sessions', { n: totalSessions })}</span>
         <span>{t('status.messages', { n: summary?.messages ?? 0 })}</span>
-        <span className="footer-right">
-          <button
-            className="panel-refresh"
-            onClick={handleRefresh}
-            title={t('app.refresh')}
-            disabled={refreshing}
-          >
-            <RefreshIcon spinning={refreshing} />
-          </button>
-        </span>
       </footer>
 
       {jsonModal && (
@@ -421,44 +469,16 @@ function StatCard({
 /* ================================================================
    Conversation View
    ================================================================ */
-function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHandled, refreshKey }: {
+function ConversationView({ session, messages, loading, systemPrompt, onViewRaw, jumpToMsgId, onJumpHandled }: {
   session: Session;
   messages: Message[];
+  loading: boolean;
+  systemPrompt: string | null;
   onViewRaw: (t: string, d: any) => void;
   jumpToMsgId: number | null;
   onJumpHandled: () => void;
-  refreshKey: number;
 }) {
   const { t } = useI18n();
-  const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
-  const [apiCalls, setApiCalls] = useState<ApiCall[]>([]);
-  const [hookAvailable, setHookAvailable] = useState(false);
-  const [apiPanelOpen, setApiPanelOpen] = useState(false);
-
-  // Load the system prompt for the current session
-  useEffect(() => {
-    let cancelled = false;
-    setSystemPrompt(null);
-    api.getSystemPromptBySession(session.id).then(p => {
-      if (!cancelled) setSystemPrompt(p);
-    }).catch(() => { });
-    return () => { cancelled = true; };
-  }, [session.id]);
-
-  // Load API request/response records for this session (from api_hook.db).
-  // Reloads when the session changes or after a refresh (refreshKey bump).
-  useEffect(() => {
-    let cancelled = false;
-    api.hookAvailable().then(av => {
-      if (!cancelled) setHookAvailable(av);
-    }).catch(() => { });
-    api.listApiCalls(session.id).then(res => {
-      if (!cancelled) { setApiCalls(res.rows); if (res.available) setHookAvailable(true); }
-    }).catch(() => { });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.id, refreshKey]);
-
   // Build the system-prompt message (index #0)
   const sysMsg: Message | null = systemPrompt
     ? {
@@ -495,229 +515,22 @@ function ConversationView({ session, messages, onViewRaw, jumpToMsgId, onJumpHan
           </span>
         </div>
         <div className="conv-meta">
+          {session.model && <span>🤖 <strong>{session.model}</strong></span>}
           <span>💬 <strong>{session.message_count}</strong> {t('conv.messages')}</span>
           <span>🔧 <strong>{session.tool_call_count}</strong> {t('conv.toolCalls')}</span>
           <span>🔁 <strong>{session.api_call_count ?? 0}</strong> {t('conv.apiCalls')}</span>
           <span>📊 <strong>{formatSizeNoB(session.input_tokens + session.output_tokens)}</strong></span>
-          {session.model && <span>🤖 <strong>{session.model}</strong></span>}
         </div>
       </div>
-
-      {/* API request/response panel (from api_hook.db) */}
-      <ApiCallsPanel
-        calls={apiCalls}
-        available={hookAvailable}
-        open={apiPanelOpen}
-        onToggle={() => setApiPanelOpen(o => !o)}
-        onViewRaw={onViewRaw}
-      />
 
       <div className="conv-body">
-        <MessageList messages={allMessages} onViewRaw={onViewRaw} jumpToMsgId={jumpToMsgId} onJumpHandled={onJumpHandled} sessionId={session.id} />
+        {loading && <div className="conv-loading-bar"><div className="conv-loading-fill" /></div>}
+        <MessageList messages={allMessages} onViewRaw={onViewRaw} jumpToMsgId={jumpToMsgId} onJumpHandled={onJumpHandled} />
       </div>
     </div>
   );
 }
 
-/* ---- API request/response panel ---- */
-function ApiCallsPanel({ calls, available, open, onToggle, onViewRaw }: {
-  calls: ApiCall[];
-  available: boolean;
-  open: boolean;
-  onToggle: () => void;
-  onViewRaw: (t: string, d: any) => void;
-}) {
-  const { t } = useI18n();
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-
-  if (!available) {
-    return (
-      <div className="api-panel api-panel-empty">
-        <span className="api-panel-hint">{t('api.notAvailable')}</span>
-      </div>
-    );
-  }
-
-  // Tally usage across all calls for the panel summary
-  const totalUsage = calls.reduce((acc, c) => {
-    const u = parseUsage(c.usage);
-    acc.input += u.input;
-    acc.output += u.output;
-    acc.cache += u.cache;
-    acc.prompt += u.prompt;
-    acc.total += u.total;
-    return acc;
-  }, { input: 0, output: 0, cache: 0, prompt: 0, total: 0 });
-  const totalHitRate = cacheHitRate(totalUsage);
-
-  return (
-    <div className={`api-panel ${open ? 'open' : ''}`}>
-      <div className="api-panel-header" onClick={onToggle}>
-        <Chevron open={open} />
-        <span className="api-panel-title">🌐 {t('api.title')}</span>
-        <span className="api-panel-count">{t('api.count', { n: calls.length })}</span>
-        {calls.length > 0 && (
-          <span className="api-panel-usage">
-            <span className="usage-seg usage-in" title={t('api.tooltipInput')}>↑ {formatSizeNoB(totalUsage.input)}</span>
-            <span className="usage-seg usage-out" title={t('api.tooltipOutput')}>↓ {formatSizeNoB(totalUsage.output)}</span>
-            <span className="usage-seg usage-cache" title={t('api.tooltipCache')}>◎ {formatSizeNoB(totalUsage.cache)}</span>
-            {totalHitRate != null && (
-              <span
-                className={`usage-seg usage-hit ${totalHitRate > 0.8 ? 'good' : totalHitRate > 0.5 ? 'mid' : 'low'}`}
-                title={t('api.tooltipHitRate')}
-              >
-                ◎ {Math.round(totalHitRate * 100)}%
-              </span>
-            )}
-          </span>
-        )}
-      </div>
-      {open && (
-        <div className="api-panel-body">
-          {calls.length === 0 && (
-            <div className="api-panel-empty-text">{t('api.empty')}</div>
-          )}
-          {calls.map(c => {
-            const isExp = !!expanded[c.api_request_id];
-            const usage = parseUsage(c.usage);
-            const status = callStatus(c);
-            const fr = (c.finish_reason || '').toLowerCase();
-            const frClass = fr === 'stop' ? 'stop' : fr === 'length' ? 'length' : fr === 'tool_calls' ? 'tool_calls' : fr ? 'error' : 'none';
-            return (
-              <div key={c.api_request_id} className={`api-call ${isExp ? 'open' : ''}`}>
-                <div
-                  className="api-call-header"
-                  onClick={() => setExpanded(e => ({ ...e, [c.api_request_id]: !e[c.api_request_id] }))}
-                >
-                  <span className={`api-call-dot status-${status}`} title={status} />
-                  <Chevron open={isExp} size={8} />
-                  {fr && fr !== 'tool_calls' && <span className={`api-call-fr fr-${frClass}`}>{c.finish_reason}</span>}
-                  <span className="api-call-usage">
-                    <span className="usage-seg usage-in" title={t('api.tooltipInput')}>
-                      <span className="usage-label">in</span> {formatSizeNoB(usage.input)}
-                    </span>
-                    <span className="usage-arrow">→</span>
-                    <span className="usage-seg usage-out" title={t('api.tooltipOutput')}>
-                      <span className="usage-label">out</span> {formatSizeNoB(usage.output)}
-                    </span>
-                  </span>
-                  {c.retry_count > 0 && (
-                    <span className="api-call-retry">{t('api.retry', { n: c.retry_count })}</span>
-                  )}
-                  <span className="api-call-time">{formatTime(c.started_at)}</span>
-                  {c.message_id != null && (
-                    <span className="api-call-msg">msg #{c.message_id}</span>
-                  )}
-                </div>
-                {isExp && (
-                  <div className="api-call-body">
-                    <div className="api-call-meta-grid">
-                      {c.finish_reason && (
-                        <div className="api-call-meta">
-                          <span className="api-call-meta-label">{t('api.finishReason')}</span>
-                          <span className="api-call-meta-value">{c.finish_reason}</span>
-                        </div>
-                      )}
-                      {c.response_model && (
-                        <div className="api-call-meta">
-                          <span className="api-call-meta-label">{t('api.responseModel')}</span>
-                          <span className="api-call-meta-value">{c.response_model}</span>
-                        </div>
-                      )}
-                      {usage.total > 0 && (
-                        <div className="api-call-meta">
-                          <span className="api-call-meta-label">{t('api.tokens')}</span>
-                          <span className="api-call-meta-value">
-                            {t('api.tokenDetail', { i: formatSizeNoB(usage.input), o: formatSizeNoB(usage.output), c: formatSizeNoB(usage.cache) })}
-                            {(() => {
-                              const hit = cacheHitRate(usage);
-                              return hit != null
-                                ? <span className={`usage-hit ${hit > 0.8 ? 'good' : hit > 0.5 ? 'mid' : 'low'}`} title={t('api.tooltipHitRate')}> · {t('api.cacheHit', { pct: Math.round(hit * 100) })}</span>
-                                : null;
-                            })()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="api-call-actions">
-                      {c.request && (
-                        <button
-                          className="api-call-view"
-                          onClick={() => {
-                            try { onViewRaw(t('api.request'), JSON.parse(c.request!)); }
-                            catch { onViewRaw(t('api.request'), c.request); }
-                          }}
-                        >
-                          {t('api.request')} · {t('api.viewJson')}
-                        </button>
-                      )}
-                      {c.response && (
-                        <button
-                          className="api-call-view"
-                          onClick={() => {
-                            try { onViewRaw(t('api.response'), JSON.parse(c.response!)); }
-                            catch { onViewRaw(t('api.response'), c.response); }
-                          }}
-                        >
-                          {t('api.response')} · {t('api.viewJson')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---- Helpers for the API panel ---- */
-
-interface UsageBreakdown {
-  input: number;   // tokens that missed the prompt cache (charged at normal rate)
-  output: number;  // completion tokens
-  cache: number;   // tokens served from the prompt cache (cheaper)
-  total: number;   // total_tokens as reported by the provider
-  prompt: number;  // input + cache (full prompt size)
-}
-
-/** Parse the JSON usage field into input/output/cache/total token counts. */
-function parseUsage(raw: string | null): UsageBreakdown {
-  const empty: UsageBreakdown = { input: 0, output: 0, cache: 0, total: 0, prompt: 0 };
-  if (!raw) return empty;
-  try {
-    const u = JSON.parse(raw);
-    const input = u.input_tokens ?? 0;
-    const cache = u.cache_read_tokens ?? 0;
-    return {
-      input,
-      output: u.output_tokens ?? 0,
-      cache,
-      total: u.total_tokens ?? 0,
-      prompt: u.prompt_tokens ?? (input + cache),
-    };
-  } catch {
-    return empty;
-  }
-}
-
-/** Cache hit rate 0..1 (undefined when there is no cacheable prompt). */
-function cacheHitRate(u: UsageBreakdown): number | undefined {
-  if (u.prompt <= 0) return undefined;
-  return Math.min(1, u.cache / u.prompt);
-}
-
-/** Derive a coarse status for a call: ok / error / retried. */
-function callStatus(c: ApiCall): 'ok' | 'error' | 'retried' {
-  const fr = (c.finish_reason || '').toLowerCase();
-  if (fr === 'stop' || fr === 'length' || fr === 'tool_calls') return 'ok';
-  if (fr && fr !== 'stop') return 'error';
-  if (c.retry_count > 0) return 'retried';
-  return 'ok';
-}
 
 /* ---- Chevron (consistent Apple-style expand/collapse indicator) ---- */
 // Collapsed -> points right (expandable); open -> rotates 90deg to point down.
@@ -811,12 +624,11 @@ function ToolCallsBlock({
 }
 
 /* ---- Message List ---- */
-function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionId }: {
+function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled }: {
   messages: Message[];
   onViewRaw: (t: string, d: any) => void;
   jumpToMsgId: number | null;
   onJumpHandled: () => void;
-  sessionId?: string;
 }) {
   const { t } = useI18n();
   const [showReasoning, setShowReasoning] = useState<Record<number, boolean>>({});
@@ -824,35 +636,6 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionI
   const [expandedContent, setExpandedContent] = useState<Record<number, boolean>>({});
   // For each turn id (keyed by the user message id) → whether the full process is expanded
   const [openTurns, setOpenTurns] = useState<Record<number, boolean>>({});
-
-  // Look up the API call that produced this message, then open its request/response.
-  // assistant messages join by message_id (exact); tool messages fall back to
-  // their tool_call_id which is stored in the same api_call row.
-  const [apiCallLoading, setApiCallLoading] = useState(false);
-  const [apiCallMiss, setApiCallMiss] = useState<number | null>(null);
-  const onViewApiCall = useCallback(async (msgId: number | null, toolCallId: string | null) => {
-    if (!sessionId) return;
-    setApiCallLoading(true);
-    try {
-      const call = msgId != null
-        ? await api.getCallByMessageId(sessionId, msgId)
-        : (toolCallId ? await api.getCallByToolCallId(sessionId, toolCallId) : null);
-      if (call) {
-        // Open the JSON viewer with the request (larger payload usually)
-        try { onViewRaw(t('api.request'), JSON.parse(call.request || '{}')); }
-        catch { onViewRaw(t('api.request'), call.request); }
-        setApiCallMiss(null);
-      } else {
-        // No api_hook record for this message (e.g. created before the
-        // plugin was installed) — flash a transient hint.
-        setApiCallMiss(msgId);
-        setTimeout(() => setApiCallMiss(v => (v === msgId ? null : v)), 1800);
-      }
-    } catch (e: any) {
-      console.error('api lookup failed', e);
-    }
-    setApiCallLoading(false);
-  }, [sessionId, onViewRaw, t]);
 
   // External jump to a specific message: expand its turn and scroll to it
   useEffect(() => {
@@ -975,6 +758,19 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionI
         );
         // Count of non-user (tool process) messages: subtract the user and final answer (both shown when collapsed)
         const processCount = turn.length - 1 - (finalAnswer ? 1 : 0);
+        // Extract ordered unique tool names from this turn for the collapsed pipeline
+        const toolNameSummary: { name: string; count: number }[] = [];
+        const toolNameSeen = new Set<string>();
+        for (const m of turn) {
+          if ((m.role || '').toLowerCase() === 'assistant') {
+            for (const tc of parseToolCalls(m.tool_calls)) {
+              const fn = tc.function || tc;
+              const n = fn.name || 'tool';
+              if (!toolNameSeen.has(n)) { toolNameSeen.add(n); toolNameSummary.push({ name: n, count: 1 }); }
+              else { toolNameSummary.find(x => x.name === n)!.count++; }
+            }
+          }
+        }
 
         // System-prompt turn: show fully expanded
         if (isSystemTurn) {
@@ -982,7 +778,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionI
             <div key={turnKey} className="turn-group">
               <TurnHeader isOpen={true} lead={lead}
                 toolCount={toolCount} processCount={processCount}
-                onToggle={() => {}} canToggle={false} />
+                onToggle={() => { }} canToggle={false} />
               <div className="turn-body">
                 {turn.map(m => (
                   <MessageCard key={m.id} msg={m} onViewRaw={onViewRaw}
@@ -991,7 +787,6 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionI
                     expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                     scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                     findToolResultId={findToolResultId}
-                    onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
                   />
                 ))}
               </div>
@@ -1014,8 +809,19 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionI
                 expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                 scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                 findToolResultId={findToolResultId}
-                onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
               />
+              {/* When collapsed, show tool pipeline summary */}
+              {!isOpen && processCount > 0 && toolNameSummary.length > 0 && (
+                <div className="turn-pipeline" onClick={() => setOpenTurns(o => ({ ...o, [turnKey]: !o[turnKey] }))}>
+                  <span className="turn-pipeline-label">🔧</span>
+                  {toolNameSummary.map((tn, i) => (
+                    <Fragment key={tn.name}>
+                      {i > 0 && <span className="turn-pipeline-arrow">→</span>}
+                      <span className="turn-pipeline-chip">{tn.name}{tn.count > 1 ? ` ×${tn.count}` : ''}</span>
+                    </Fragment>
+                  ))}
+                </div>
+              )}
               {/* When collapsed, show only the final answer */}
               {!isOpen && finalAnswer && (
                 <MessageCard key={finalAnswer.id} msg={finalAnswer} onViewRaw={onViewRaw}
@@ -1024,19 +830,7 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionI
                   expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                   scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                   findToolResultId={findToolResultId}
-                  onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
                 />
-              )}
-              {/* When collapsed and tool processes are hidden, show a prominent expand hint */}
-              {!isOpen && processCount > 0 && (
-                <div className="turn-more" onClick={() => setOpenTurns(o => ({ ...o, [turnKey]: !o[turnKey] }))}>
-                  <span className="turn-more-dots">{t('turn.moreDots')}</span>
-                  <span className="turn-more-text">
-                    <span className="turn-more-fade">{t('turn.moreText')}</span>
-                    <span className="turn-more-count">{t('turn.toolCalls', { n: toolCount })}</span>
-                  </span>
-                  <span className="turn-more-btn">{t('turn.viewMore')}</span>
-                </div>
               )}
               {/* When expanded, show the full process */}
               {isOpen && turn.slice(1).map(m => (
@@ -1046,7 +840,6 @@ function MessageList({ messages, onViewRaw, jumpToMsgId, onJumpHandled, sessionI
                   expandedContent={expandedContent} setExpandedContent={setExpandedContent}
                   scrollToMsg={scrollToMsg} findToolCallerId={findToolCallerId}
                   findToolResultId={findToolResultId}
-                  onViewApiCall={onViewApiCall} apiCallLoading={apiCallLoading} apiCallMiss={apiCallMiss}
                 />
               ))}
             </div>
@@ -1109,23 +902,19 @@ function TurnHeader({ isOpen, lead, toolCount, processCount, onToggle, canToggle
 /* ---- Individual message card (reusing the original rendering logic) ---- */
 function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
   openToolDetails, toggleTool, expandedContent, setExpandedContent,
-  scrollToMsg, findToolCallerId, findToolResultId,
-  onViewApiCall, apiCallLoading, apiCallMiss }: {
-  msg: Message;
-  onViewRaw: (t: string, d: any) => void;
-  showReasoning: Record<number, boolean>;
-  setShowReasoning: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
-  openToolDetails: Record<string, boolean>;
-  toggleTool: (key: string) => void;
-  expandedContent: Record<number, boolean>;
-  setExpandedContent: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
-  scrollToMsg: (id: number) => void;
-  findToolCallerId: (toolCallId: string) => number | null;
-  findToolResultId: (toolCallId: string) => number | null;
-  onViewApiCall?: (msgId: number | null, toolCallId: string | null) => void;
-  apiCallLoading?: boolean;
-  apiCallMiss?: number | null;
-}) {
+  scrollToMsg, findToolCallerId, findToolResultId }: {
+    msg: Message;
+    onViewRaw: (t: string, d: any) => void;
+    showReasoning: Record<number, boolean>;
+    setShowReasoning: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
+    openToolDetails: Record<string, boolean>;
+    toggleTool: (key: string) => void;
+    expandedContent: Record<number, boolean>;
+    setExpandedContent: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
+    scrollToMsg: (id: number) => void;
+    findToolCallerId: (toolCallId: string) => number | null;
+    findToolResultId: (toolCallId: string) => number | null;
+  }) {
   const { t } = useI18n();
   const r = (msg.role || '').toLowerCase();
   const hasReasoning = !!msg.reasoning_content;
@@ -1140,7 +929,7 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
   const shownContent = isLong && !isExpanded ? msg.content.slice(0, LONG) + '…' : msg.content;
 
   return (
-    <div key={msg.id} id={`msg-${msg.id}`} className="msg-mini msg-card">
+    <div key={msg.id} id={`msg-${msg.id}`} className={`msg-mini msg-card${r === 'assistant' ? ' assistant' : ''}`}>
       <div className="msg-mini-head">
         <span className={`msg-mini-role ${r}`}>{msg.role}</span>
         <span>#{seq}</span>
@@ -1201,19 +990,6 @@ function MessageCard({ msg, onViewRaw, showReasoning, setShowReasoning,
       )}
 
       <div className="chat-actions">
-        {onViewApiCall && (r === 'assistant' || toolCalls.length > 0 || (r === 'tool' && msg.tool_call_id)) && (
-          <button
-            className="chip chip-api"
-            disabled={!!apiCallLoading}
-            onClick={() => onViewApiCall(
-              (r === 'assistant' || toolCalls.length > 0) ? msg.id : null,
-              (r === 'tool' && msg.tool_call_id) ? msg.tool_call_id : null
-            )}
-            title={t('msg.viewApiCall')}
-          >
-            {apiCallLoading ? '…' : apiCallMiss === msg.id ? t('msg.apiNone') : '⚡'} {t('msg.apiReqResp')}
-          </button>
-        )}
         <button className="chip" onClick={() => onViewRaw(`${t('msg.rawData')} #${msg.id}`, {
           id: msg.id, role: msg.role, content: msg.content,
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
@@ -1412,6 +1188,295 @@ function SqlPage() {
             </table>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================
+/* ================================================================
+   API Records Page (content tab in the main area)
+   ================================================================ */
+function ApiRecordsPage({ session, refreshKey, onCountChange, onViewRaw }: {
+  session: Session;
+  refreshKey: number;
+  onCountChange?: (count: number) => void;
+  onViewRaw: (t: string, d: any) => void;
+}) {
+  const { t } = useI18n();
+  const [hookAvailable, setHookAvailable] = useState<boolean | null>(null);
+  const [apiCalls, setApiCalls] = useState<ApiCall[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Api call whose payload is being fetched on demand (lazy request/response)
+  const [payloadLoading, setPayloadLoading] = useState<{ id: string; kind: 'request' | 'response' } | null>(null);
+
+  // Check hook availability
+  useEffect(() => {
+    api.hookAvailable().then(setHookAvailable).catch(() => setHookAvailable(false));
+  }, []);
+
+  // Load API calls for selected session
+  useEffect(() => {
+    if (!hookAvailable) { setApiCalls([]); onCountChange?.(0); return; }
+    let cancelled = false;
+    const isFirstLoad = apiCalls.length === 0 && hookAvailable;
+    if (isFirstLoad) setInitialLoading(true);
+    api.listApiCalls(session.id).then(res => {
+      if (!cancelled) {
+        setApiCalls(res.rows);
+        onCountChange?.(res.rows.length);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setApiCalls([]);
+        onCountChange?.(0);
+      }
+    }).finally(() => {
+      if (!cancelled) setInitialLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [session.id, hookAvailable, refreshKey]);
+
+  if (hookAvailable === null) {
+    return <div className="api-checking">{t('api.checking')}</div>;
+  }
+
+  function toggleExpand(id: string) {
+    setExpandedId(prev => prev === id ? null : id);
+  }
+
+  function parseUsage(usage: string | null): Record<string, number> {
+    if (!usage) return {};
+    try { return JSON.parse(usage); } catch { return {}; }
+  }
+
+
+  // Aggregated usage for the header summary chips.
+  const agg = apiCalls.reduce((acc, c) => {
+    const u = parseUsage(c.usage);
+    acc.in += u.input_tokens || 0;
+    acc.out += u.output_tokens || 0;
+    acc.cache += u.cache_read_tokens || 0;
+    return acc;
+  }, { in: 0, out: 0, cache: 0 });
+
+  return (
+    <div className="conv-wrapper">
+      <div className="conv-header">
+        <div className="conv-title">
+          {session.title || t('turn.emptyTitle')}
+          <span
+            className="conv-id"
+            title={t('conv.copyId')}
+            onClick={() => { navigator.clipboard.writeText(session.id); }}
+          >
+            #{session.id}
+          </span>
+        </div>
+        <div className="conv-meta">
+          {session.model && <span>🤖 <strong>{session.model}</strong></span>}
+          <span>📡 <strong>{apiCalls.length}</strong> {t('nav.apiRecords')}</span>
+          <span>📥 <strong>{formatSizeNoB(agg.in)}</strong> {t('api.input')}</span>
+          <span>📤 <strong>{formatSizeNoB(agg.out)}</strong> {t('api.output')}</span>
+          {agg.cache > 0 && <span>💾 <strong>{formatSizeNoB(agg.cache)}</strong> {t('api.cache')}</span>}
+        </div>
+        {(() => {
+          const total = agg.in + agg.out + agg.cache;
+          if (total <= 0) return null;
+          const hitPct = agg.in + agg.cache > 0 ? ((agg.cache / (agg.in + agg.cache)) * 100).toFixed(1) : '0';
+          const hitNum = parseFloat(hitPct);
+          const hitCls = hitNum > 80 ? 'good' : hitNum > 50 ? 'mid' : 'low';
+          return (
+            <div className="api-cum-bar">
+              <div className="api-cum-track">
+                {agg.in > 0 && <span className="bar-in" style={{ width: `${(agg.in / total) * 100}%` }} />}
+                {agg.out > 0 && <span className="bar-out" style={{ width: `${(agg.out / total) * 100}%` }} />}
+                {agg.cache > 0 && <span className="bar-cache" style={{ width: `${(agg.cache / total) * 100}%` }} />}
+              </div>
+              <span className={`api-cum-label ${hitCls}`}>{t('api.hitRate', { pct: hitPct })}</span>
+            </div>
+          );
+        })()}
+      </div>
+
+      {!hookAvailable ? (
+        <div className="empty-state">
+          <div className="empty-icon">📡</div>
+          <div className="empty-title">{t('api.noHook')}</div>
+          <div className="empty-desc">{t('api.noHookDesc')}</div>
+        </div>
+      ) : initialLoading ? (
+        <div style={{ position: 'relative', flex: 1 }}>
+          <div className="conv-loading-bar"><div className="conv-loading-fill" /></div>
+        </div>
+      ) : apiCalls.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">📭</div>
+          <div className="empty-title">{t('api.noCalls')}</div>
+          <div className="empty-desc">{t('api.noCallsDesc')}</div>
+        </div>
+      ) : (
+        <div className="api-list">
+          {apiCalls.map((call, idx) => {
+            const usage = parseUsage(call.usage);
+            const isExpanded = expandedId === call.api_request_id;
+            const duration = call.ended_at && call.started_at
+              // started_at/ended_at are UNIX seconds — the difference IS the duration
+              ? (call.ended_at - call.started_at).toFixed(1) + 's'
+              : '—';
+            const fr = call.finish_reason;
+            const frLabel = fr || '—';
+            return (
+              <div
+                key={call.api_request_id}
+                className={`api-row${isExpanded ? ' open' : ''}`}
+              >
+                <div className="api-row-head" onClick={() => toggleExpand(call.api_request_id)}>
+                  <span className="api-step">#{apiCalls.length - idx}</span>
+                  <Chevron open={isExpanded} size={10} />
+                  {call.model && <span className="api-row-model">{call.model}</span>}
+                  <span className={`api-fr fr-${fr || 'stop'}`}>{frLabel}</span>
+                  <span className="api-row-usage">
+                    {usage.input_tokens != null && (
+                      <span className="usage-badge usage-in">{formatSizeNoB(usage.input_tokens)} {t('api.input')}</span>
+                    )}
+                    {usage.output_tokens != null && (
+                      <span className="usage-badge usage-out">{formatSizeNoB(usage.output_tokens)} {t('api.output')}</span>
+                    )}
+                    {usage.cache_read_tokens != null && usage.cache_read_tokens > 0 && (
+                      <span className="usage-badge usage-cache">◎ {formatSizeNoB(usage.cache_read_tokens)}</span>
+                    )}
+                  </span>
+                  {(() => {
+                    const tin = usage.input_tokens || 0;
+                    const tcache = usage.cache_read_tokens || 0;
+                    const tout = usage.output_tokens || 0;
+                    const total = tin + tcache + tout;
+                    if (total <= 0) return null;
+                    return (
+                      <div className="api-row-bar" title={`in ${formatSizeNoB(tin)} · cache ${formatSizeNoB(tcache)} · out ${formatSizeNoB(tout)}`}>
+                        {tin > 0 && <span className="bar-in" style={{ width: `${(tin / total) * 100}%` }} />}
+                        {tout > 0 && <span className="bar-out" style={{ width: `${(tout / total) * 100}%` }} />}
+                        {tcache > 0 && <span className="bar-cache" style={{ width: `${(tcache / total) * 100}%` }} />}
+                      </div>
+                    );
+                  })()}
+                  <span className="api-row-duration">{duration}</span>
+                  <span className="api-row-time">{formatTime(call.started_at)}</span>
+                </div>
+
+                {isExpanded && (
+                  <div className="api-row-body">
+                    {/* Token composition bar: input / cache-read / output */}
+                    {(() => {
+                      const tin = usage.input_tokens || 0;
+                      const tcache = usage.cache_read_tokens || 0;
+                      const tout = usage.output_tokens || 0;
+                      const total = tin + tcache + tout;
+                      if (total <= 0) return null;
+                      const hitPct = tin + tcache > 0 ? Number(((tcache / (tin + tcache)) * 100).toFixed(2)) : 0;
+                      const hitCls = hitPct > 80 ? 'good' : hitPct > 50 ? 'mid' : 'low';
+                      return (
+                        <div className="api-token-bar-wrap">
+                          <div className="api-token-bar" title={`${t('api.input')} ${formatSizeNoB(tin)} · ${t('api.cache')} ${formatSizeNoB(tcache)} · ${t('api.output')} ${formatSizeNoB(tout)}`}>
+                            {tin > 0 && <span className="bar-in" style={{ width: `${(tin / total) * 100}%` }} />}
+                            {tout > 0 && <span className="bar-out" style={{ width: `${(tout / total) * 100}%` }} />}
+                            {tcache > 0 && <span className="bar-cache" style={{ width: `${(tcache / total) * 100}%` }} />}
+                          </div>
+                          <span className={`api-hit-rate ${hitCls}`} title={t('api.tooltipHitRate')}>{t('api.hitRate', { pct: hitPct })}</span>
+                        </div>
+                      );
+                    })()}
+                    <div className="api-token-grid">
+                      {usage.input_tokens != null && (
+                        <span>{t('api.input')} <strong>{formatSizeNoB(usage.input_tokens)}</strong></span>
+                      )}
+                      {usage.output_tokens != null && (
+                        <span>{t('api.output')} <strong>{formatSizeNoB(usage.output_tokens)}</strong></span>
+                      )}
+                      {usage.cache_read_tokens != null && (
+                        <span>{t('api.cache')} <strong>{formatSizeNoB(usage.cache_read_tokens)}</strong></span>
+                      )}
+                      {usage.reasoning_tokens != null && usage.reasoning_tokens > 0 && (
+                        <span>{t('api.reasoning')} <strong>{formatSizeNoB(usage.reasoning_tokens)}</strong></span>
+                      )}
+                      {usage.total_tokens != null && (
+                        <span>{t('api.total')} <strong>{formatSizeNoB(usage.total_tokens)}</strong></span>
+                      )}
+                    </div>
+
+                    <div className="api-actions">
+                      <button
+                        className="chip chip-api"
+                        disabled={!!payloadLoading}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (payloadLoading) return;
+                          setPayloadLoading({ id: call.api_request_id, kind: 'request' });
+                          try {
+                            const p = await api.getApiCallPayload(call.api_request_id);
+                            if (p?.request) {
+                              let data: any;
+                              try { data = JSON.parse(p.request); } catch { data = p.request; }
+                              onViewRaw(`${t('api.request')} — ${call.model || ''}`.trim(), data);
+                            }
+                          } catch (err) {
+                            console.error('load request failed', err);
+                          } finally {
+                            setPayloadLoading(null);
+                          }
+                        }}
+                      >{payloadLoading?.id === call.api_request_id && payloadLoading.kind === 'request' ? '…' : '📋'} {t('api.request')}</button>
+                      <button
+                        className="chip chip-api"
+                        disabled={!!payloadLoading}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (payloadLoading) return;
+                          setPayloadLoading({ id: call.api_request_id, kind: 'response' });
+                          try {
+                            const p = await api.getApiCallPayload(call.api_request_id);
+                            if (p?.response) {
+                              let data: any;
+                              try { data = JSON.parse(p.response); } catch { data = p.response; }
+                              onViewRaw(`${t('api.response')} — ${call.model || ''}`.trim(), data);
+                            }
+                          } catch (err) {
+                            console.error('load response failed', err);
+                          } finally {
+                            setPayloadLoading(null);
+                          }
+                        }}
+                      >{payloadLoading?.id === call.api_request_id && payloadLoading.kind === 'response' ? '…' : '📋'} {t('api.response')}</button>
+                    </div>
+
+                    <div className="api-meta-grid">
+                      <div className="api-meta-row">
+                        <span className="api-meta-label">{t('api.callId')}</span>
+                        <button
+                          className="api-id-copy"
+                          title={t('api.copyId')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(call.api_request_id).catch(() => { /* */ });
+                          }}
+                        >{call.api_request_id}</button>
+                      </div>
+                      <div className="api-meta-row">
+                        <span className="api-meta-item">{t('api.mode')}: <strong>{call.api_mode || '—'}</strong></span>
+                        <span className="dot" />
+                        <span className="api-meta-item">{t('api.retries')}: <strong>{call.retry_count}</strong></span>
+                        <span className="dot" />
+                        <span className="api-meta-item">{t('api.duration')}: <strong>{duration}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
