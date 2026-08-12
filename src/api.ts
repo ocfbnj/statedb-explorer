@@ -85,9 +85,8 @@ interface StateDBBridge {
   reload(): Promise<{ ok: boolean; error?: string; path?: string; size?: number; name?: string }>;
   meta(): Promise<{ ok: boolean; path: string; size: number; name: string }>;
   listApiCalls(sessionId: string): Promise<{ ok: boolean; rows?: ApiCall[]; available?: boolean; error?: string }>;
+  getApiCallPayload(apiRequestId: string): Promise<{ ok: boolean; row?: { api_request_id: string; model: string | null; request: string | null; response: string | null } | null; error?: string }>;
   hookAvailable(): Promise<{ ok: boolean; available?: boolean }>;
-  getCallByToolCallId(sessionId: string, toolCallId: string): Promise<{ ok: boolean; row?: ApiCall | null; error?: string }>;
-  getCallByMessageId(sessionId: string, messageId: number): Promise<{ ok: boolean; row?: ApiCall | null; error?: string }>;
 }
 
 declare global {
@@ -337,27 +336,19 @@ export const api = {
     return { rows: (res.rows || []) as ApiCall[], available: !!res.available };
   },
 
+  /** Load the full request/response payload for one API call (lazy) */
+  getApiCallPayload: async (apiRequestId: string): Promise<{ request: string | null; response: string | null } | null> => {
+    await ready;
+    const res = await bridge().getApiCallPayload(apiRequestId);
+    if (!res.ok) throw new Error(res.error || 'Query failed');
+    return res.row ?? null;
+  },
+
   /** Whether api_hook.db was found next to state.db */
   hookAvailable: async (): Promise<boolean> => {
     await ready;
     const res = await bridge().hookAvailable();
     return !!res.available;
-  },
-
-  /** Look up the API call that emitted a given tool-call id (exact join) */
-  getCallByToolCallId: async (sessionId: string, toolCallId: string): Promise<ApiCall | null> => {
-    await ready;
-    const res = await bridge().getCallByToolCallId(sessionId, toolCallId);
-    if (!res.ok) throw new Error(res.error || 'Query failed');
-    return res.row ?? null;
-  },
-
-  /** Look up the API call that produced a given assistant message (exact id join) */
-  getCallByMessageId: async (sessionId: string, messageId: number): Promise<ApiCall | null> => {
-    await ready;
-    const res = await bridge().getCallByMessageId(sessionId, messageId);
-    if (!res.ok) throw new Error(res.error || 'Query failed');
-    return res.row ?? null;
   },
 
   /** Reload state.db from disk, returning updated metadata */

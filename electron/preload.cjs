@@ -14,7 +14,6 @@ contextBridge.exposeInMainWorld('stateDB', {
   reload: () => ipcRenderer.invoke('db:reload'),
   meta: () => ipcRenderer.invoke('db:meta'),
   listApiCalls: (sessionId) => ipcRenderer.invoke('api:listApiCalls', sessionId),
+  getApiCallPayload: (apiRequestId) => ipcRenderer.invoke('api:getApiCallPayload', apiRequestId),
   hookAvailable: () => ipcRenderer.invoke('api:hookAvailable'),
-  getCallByToolCallId: (sessionId, toolCallId) => ipcRenderer.invoke('api:getCallByToolCallId', sessionId, toolCallId),
-  getCallByMessageId: (sessionId, messageId) => ipcRenderer.invoke('api:getCallByMessageId', sessionId, messageId),
 });

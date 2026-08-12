@@ -149,19 +149,19 @@ function registerIpc() {
   });
 
   // List API request/response records for a session from api_hook.db.
-  // Each api_call row carries the assistant message id it produced
-  // (message_id, backfilled by the plugin), so the join is exact.
+  // Only light metadata is returned — the request/response payloads can be
+  // hundreds of MB per session and would blow up the renderer if shipped
+  // over IPC in one go. Payloads are loaded on demand via api:getApiCallPayload.
   ipcMain.handle('api:listApiCalls', (_e, sessionId) => {
     if (!apiHookDb) return { ok: true, rows: [], available: false };
     try {
       const rows = apiHookDb.prepare(`
         SELECT api_request_id, session_id, api_call_count, retry_count,
                model, provider, api_mode, started_at, ended_at,
-               finish_reason, response_model, request, response, usage,
-               message_id
+               finish_reason, response_model, usage
         FROM api_calls
         WHERE session_id = ?
-        ORDER BY started_at ASC
+        ORDER BY started_at DESC
       `).all(sessionId);
       return { ok: true, rows, available: true };
     } catch (e) {
@@ -169,48 +169,24 @@ function registerIpc() {
     }
   });
 
+  // Load the full request/response payload for ONE api call (lazy).
+  ipcMain.handle('api:getApiCallPayload', (_e, apiRequestId) => {
+    if (!apiHookDb || !apiRequestId) return { ok: true, row: null };
+    try {
+      const row = apiHookDb.prepare(`
+        SELECT api_request_id, model, request, response
+        FROM api_calls
+        WHERE api_request_id = ?
+        LIMIT 1
+      `).get(apiRequestId);
+      return { ok: true, row: row ?? null };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
   // Whether api_hook.db was found alongside state.db
   ipcMain.handle('api:hookAvailable', () => ({ ok: true, available: !!apiHookDb }));
-
-  // Look up the API call that produced a given assistant message (exact id join).
-  ipcMain.handle('api:getCallByMessageId', (_e, sessionId, messageId) => {
-    if (!apiHookDb || messageId == null) return { ok: true, row: null };
-    try {
-      const row = apiHookDb.prepare(`
-        SELECT api_request_id, session_id, model, provider, api_mode,
-               started_at, ended_at, finish_reason, response_model,
-               request, response, usage, message_id
-        FROM api_calls
-        WHERE session_id = ? AND message_id = ?
-        LIMIT 1
-      `).get(sessionId, messageId);
-      return { ok: true, row: row ?? null };
-    } catch (e) {
-      return { ok: false, error: e.message };
-    }
-  });
-
-  // Look up the API call that produced a given tool result (exact id join
-  // via the plugin's tool_call_ids column; LIKE fallback for old rows).
-  ipcMain.handle('api:getCallByToolCallId', (_e, sessionId, toolCallId) => {
-    if (!apiHookDb || !toolCallId) return { ok: true, row: null };
-    try {
-      const row = apiHookDb.prepare(`
-        SELECT api_request_id, session_id, model, provider, api_mode,
-               started_at, ended_at, finish_reason, response_model,
-               request, response, usage, message_id
-        FROM api_calls
-        WHERE session_id = ?
-          AND (tool_call_ids LIKE '%' || ? || '%' OR response LIKE '%' || ? || '%')
-        ORDER BY
-          CASE WHEN tool_call_ids LIKE '%' || ? || '%' THEN 0 ELSE 1 END
-        LIMIT 1
-      `).get(sessionId, toolCallId, toolCallId, toolCallId);
-      return { ok: true, row: row ?? null };
-    } catch (e) {
-      return { ok: false, error: e.message };
-    }
-  });
 }
 
 // ============================================================

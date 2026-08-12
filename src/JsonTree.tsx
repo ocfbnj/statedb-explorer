@@ -387,12 +387,54 @@ function unwrapPayload(data: any): any {
   return data;
 }
 
+/** Extract the last real message (skipping Hermes-internal markers) and
+ *  render a readable one-line summary of its content. */
+function lastMessagePreview(messages: any[]): { role: string; text: string } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || typeof m !== 'object') continue;
+    const keys = Object.keys(m);
+    if (keys.length === 0 || keys.every(k => k.startsWith('_'))) continue; // skip {_truncated_items}
+    const role = m.role != null ? String(m.role)
+      : (m.type === 'function_call' || m.type === 'function_call_output' ? 'tool' : '?');
+    // function_call / function_call_output items: show `name` instead of content
+    if (m.type === 'function_call') return { role, text: `⚙ ${m.name || 'function'}` };
+    if (m.type === 'function_call_output') {
+      const out = typeof m.output === 'string' ? m.output : safePreview(m.output);
+      return { role, text: `↳ ${out}`.slice(0, 500) };
+    }
+    const c = m.content;
+    if (typeof c === 'string') return { role, text: c };
+    if (Array.isArray(c)) {
+      // Responses API content blocks: [{ type: 'output_text', text }]
+      let text = '';
+      for (const block of c) {
+        if (block && typeof block === 'object') {
+          if (typeof block.text === 'string') text += block.text;
+          else if (block.type === 'input_text' && typeof block.text === 'string') text += block.text;
+        }
+      }
+      return { role, text: text || '(empty)' };
+    }
+    return { role, text: '(empty)' };
+  }
+  return null;
+}
+
 /** Count message roles in a messages array. */
 function countRoles(messages: any[]): { role: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const m of messages) {
     if (m && typeof m === 'object') {
-      const role = String(m.role ?? '?');
+      // Skip Hermes-internal markers (e.g. {_truncated_items: N}) that
+      // appear in truncated context windows — they are not real messages.
+      const keys = Object.keys(m);
+      if (keys.length === 0 || keys.every(k => k.startsWith('_'))) continue;
+      // Responses API items carry `type` instead of `role` (e.g.
+      // function_call / function_call_output) — classify them as tool turns.
+      const role = m.role != null
+        ? String(m.role)
+        : (m.type === 'function_call' || m.type === 'function_call_output' ? 'tool' : '?');
       counts.set(role, (counts.get(role) ?? 0) + 1);
     }
   }
@@ -463,7 +505,10 @@ function summarizeJsonInner(data: any): JsonSummaryData {
   const method = data && typeof data === 'object' && 'method' in data ? (data as any).method : undefined;
   const body = unwrapPayload(data);
   if (body && typeof body === 'object') {
-    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const messages = Array.isArray(body.messages) ? body.messages
+      // Responses API mode (api_mode = codex_responses): conversation is in `input`
+      : Array.isArray(body.input) ? body.input
+      : [];
     const tools = Array.isArray(body.tools) ? body.tools : [];
     const roleCounts = countRoles(messages);
     const sections: SummarySection[] = [
@@ -477,6 +522,21 @@ function summarizeJsonInner(data: any): JsonSummaryData {
         ],
       },
     ];
+    // The last message usually carries the actual content of this request —
+    // surface it up front so the caller doesn't have to dig into the array.
+    const lastMsg = messages.length > 0 ? lastMessagePreview(messages) : null;
+    if (lastMsg) {
+      const msgText = lastMsg.text.length > 500 ? lastMsg.text.slice(0, 500) + '…' : lastMsg.text;
+      sections.push({
+        title: 'Last message',
+        icon: lastMsg.role === 'user' ? '👤' : lastMsg.role === 'tool' ? '🔧' : '💬',
+        rows: [{
+          label: lastMsg.role,
+          value: msgText || '(empty)',
+          tone: lastMsg.role === 'user' ? 'accent' : lastMsg.role === 'tool' ? 'purple' : undefined,
+        }],
+      });
+    }
     if (messages.length > 0) {
       sections.push({
         title: 'Messages',
