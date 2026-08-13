@@ -5,6 +5,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('stateDB', {
+  platform: process.platform,
   init: () => ipcRenderer.invoke('db:init'),
   autoload: () => ipcRenderer.invoke('db:autoload'),
   pick: () => ipcRenderer.invoke('db:pick'),

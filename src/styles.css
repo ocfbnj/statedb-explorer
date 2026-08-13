@@ -93,6 +93,15 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* macOS: push content right to avoid overlapping the traffic-light buttons (~70px from left) */
+.header.macOS {
+  padding-left: 72px;
+}
+/* macOS: no overlay buttons on the right — reclaim the 138px Windows reservation */
+.header.macOS .header-actions {
+  margin-right: 0;
+}
+
 .header-logo {
   font-weight: 600;
   font-size: 15px;

@@ -76,6 +76,7 @@ export interface SystemPrompt {
 /* ==================== IPC bridge (Electron) ==================== */
 
 interface StateDBBridge {
+  platform: string;
   init(): Promise<{ ok: boolean }>;
   autoload(): Promise<{ ok: boolean; error?: string; path?: string; size?: number; name?: string }>;
   pick(): Promise<{ ok: boolean; error?: string; path?: string; size?: number; name?: string }>;
@@ -397,3 +398,6 @@ export function formatDuration(seconds: number): string {
   const s = Math.floor(seconds % 60);
   return `${m}m ${s}s`;
 }
+
+/** Detected OS platform — 'darwin' on macOS, 'win32' on Windows, etc. */
+export const platform: string = (window.stateDB?.platform ?? (navigator.platform.toLowerCase().includes('mac') ? 'darwin' : 'win32'));

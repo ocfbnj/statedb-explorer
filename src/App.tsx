@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
-  api, whenReady, onProgress, formatSize, formatSizeNoB, formatTime,
+  api, whenReady, onProgress, formatSize, formatSizeNoB, formatTime, platform,
 } from './api';
 import type { Session, Message, Summary, ApiCall } from './api';
 import { useI18n } from './I18nContext';
@@ -208,7 +208,7 @@ export default function App() {
   return (
     <div className="app">
       {/* Header — custom-drawn title bar */}
-      <header className="header">
+      <header className={`header ${platform === 'darwin' ? 'macOS' : ''}`}>
         <div className="header-logo no-drag">
           <span className="logo-icon">⚡</span> StateDB Explorer
         </div>
