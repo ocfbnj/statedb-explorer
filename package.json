@@ -10,6 +10,7 @@
     "dev": "concurrently -k \"vite\" \"electron .\"",
     "dev:renderer": "vite",
     "dev:electron": "wait-on tcp:5173 && electron .",
+    "dev:cdp": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron . --remote-debugging-port=9333\"",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
